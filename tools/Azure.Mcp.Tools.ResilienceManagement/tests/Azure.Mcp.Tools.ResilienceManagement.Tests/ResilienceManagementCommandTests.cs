@@ -144,6 +144,25 @@ public class ResilienceManagementCommandTests(
     }
 
     [Fact]
+    public async Task Should_check_drill_resync_readiness()
+    {
+        var serviceGroup = RegisterOrRetrieveDeploymentOutputVariable("serviceGroupName", "SERVICEGROUPNAME");
+        var drillName = RegisterOrRetrieveDeploymentOutputVariable("drillName", "DRILLNAME");
+
+        var result = await CallToolAsync(
+            "resilience_drill_check-resync-readiness",
+            new()
+            {
+                { "tenant", Settings.TenantId },
+                { "service-group", serviceGroup },
+                { "drill", drillName }
+            });
+
+        var readiness = result.AssertProperty("readiness");
+        Assert.False(string.IsNullOrEmpty(readiness.AssertProperty("operationId").GetString()));
+    }
+
+    [Fact]
     public async Task Should_list_drill_resources()
     {
         var serviceGroup = RegisterOrRetrieveDeploymentOutputVariable("serviceGroupName", "SERVICEGROUPNAME");

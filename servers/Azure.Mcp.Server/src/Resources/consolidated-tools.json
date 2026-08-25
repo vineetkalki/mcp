@@ -84,15 +84,15 @@
     },
     {
       "name": "check_azure_resilience_management_readiness",
-      "description": "Check whether an Azure Resilience Management recovery plan and its protected resources are ready for recovery operations in an Azure service group.",
+      "description": "Check whether Azure Resilience Management recovery plans or drills are ready for recovery or drill run operations in an Azure service group.",
       "toolMetadata": {
         "destructive": {
           "value": false,
-          "description": "This tool does not delete or modify the recovery plan or its protected resources."
+          "description": "This tool does not delete or modify recovery plans, drills, or their protected resources."
         },
         "idempotent": {
           "value": false,
-          "description": "Each invocation creates a new readiness job with a unique operation identifier."
+          "description": "Each invocation creates a new readiness check operation with a unique operation identifier."
         },
         "openWorld": {
           "value": false,
@@ -100,7 +100,7 @@
         },
         "readOnly": {
           "value": false,
-          "description": "This tool creates a readiness job while leaving the recovery plan and its protected resources unchanged."
+          "description": "This tool creates a readiness check operation while leaving the recovery plan, drill, and protected resources unchanged."
         },
         "secret": {
           "value": false,
@@ -112,7 +112,8 @@
         }
       },
       "mappedToolList": [
-        "resilience_recoveryplan_checkreadiness"
+        "resilience_recoveryplan_checkreadiness",
+        "resilience_drill_check-resync-readiness"
       ]
     },
     {

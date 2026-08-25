@@ -3785,6 +3785,11 @@ azmcp resilience recoveryjob resource get --subscription <subscription> \
 azmcp resilience drill get --service-group <service-group> \
                            [--name <name>]
 
+# Start a resync and readiness check to confirm a resilience drill is ready to run
+# ❌ Destructive | ❌ Idempotent | ❌ OpenWorld | ❌ ReadOnly | ❌ Secret | ❌ LocalRequired
+azmcp resilience drill check-resync-readiness --service-group <service-group> \
+                                              --drill <drill>
+
 # Get a resource (target) of a drill, or list all resources of the drill (omit --name)
 # ❌ Destructive | ✅ Idempotent | ❌ OpenWorld | ✅ ReadOnly | ❌ Secret | ❌ LocalRequired
 azmcp resilience drill resource get --service-group <service-group> \

@@ -1134,6 +1134,27 @@ public sealed class ResilienceManagementService(IAzureService azureService)
             SystemData: root.TryGetProperty("systemData", out JsonElement systemDataElement) ? systemDataElement.Clone() : default);
     }
 
+    public async Task<DrillResyncReadinessResult> CheckDrillResyncReadinessAsync(
+        string serviceGroup,
+        string drill,
+        string? tenant = null,
+        RetryPolicyOptions? retryPolicy = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArmClient armClient = await CreateArmClientAsync(tenantIdOrName: tenant, retryPolicy: retryPolicy, cancellationToken: cancellationToken);
+
+        var drillId = ResilienceManagementDrillResource.CreateResourceIdentifier(serviceGroup, drill);
+        ResilienceManagementDrillResource drillResource = armClient.GetResilienceManagementDrillResource(drillId);
+        string operationId = Guid.NewGuid().ToString();
+
+        var operation = await drillResource.ResyncReadinessCheckAsync(
+            WaitUntil.Started,
+            operationId,
+            cancellationToken);
+
+        return new DrillResyncReadinessResult(operationId, operation.HasCompleted);
+    }
+
     public async Task<IEnumerable<ResourceSummary>> ListDrillResourcesAsync(string serviceGroup, string drill, string? tenant = null, RetryPolicyOptions? retryPolicy = null, CancellationToken cancellationToken = default)
     {
         ArmClient armClient = await CreateArmClientAsync(tenantIdOrName: tenant, retryPolicy: retryPolicy, cancellationToken: cancellationToken);
