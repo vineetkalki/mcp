@@ -16,5 +16,6 @@
     <PackageReference Include="Azure.ResourceManager" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Azure.ResourceManager.Monitor" />
   </ItemGroup>
 </Project>

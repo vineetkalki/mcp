@@ -3,9 +3,11 @@
 
 namespace Azure.Mcp.Tools.IoTHub.Models;
 
-public class IoTHubProperties
+internal sealed class IoTHubProperties
 {
     public string? State { get; set; }
 
     public string? HostName { get; set; }
+
+    public RoutingProperties? Routing { get; set; }
 }
