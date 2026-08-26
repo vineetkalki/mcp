@@ -3790,6 +3790,12 @@ azmcp resilience drill get --service-group <service-group> \
 azmcp resilience drill check-resync-readiness --service-group <service-group> \
                                               --drill <drill>
 
+# Validate whether a resilience drill is eligible for execution from the specified source locations
+# ❌ Destructive | ❌ Idempotent | ❌ OpenWorld | ❌ ReadOnly | ❌ Secret | ❌ LocalRequired
+azmcp resilience drill validate-for-execution --service-group <service-group> \
+                                              --drill <drill> \
+                                              --source-locations <source-locations>
+
 # Get a resource (target) of a drill, or list all resources of the drill (omit --name)
 # ❌ Destructive | ✅ Idempotent | ❌ OpenWorld | ✅ ReadOnly | ❌ Secret | ❌ LocalRequired
 azmcp resilience drill resource get --service-group <service-group> \

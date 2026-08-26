@@ -1155,6 +1155,30 @@ public sealed class ResilienceManagementService(IAzureService azureService)
         return new DrillResyncReadinessResult(operationId, operation.HasCompleted);
     }
 
+    public async Task<DrillValidateForExecutionResult> ValidateDrillForExecutionAsync(
+        string serviceGroup,
+        string drill,
+        IEnumerable<string> sourceLocations,
+        string? tenant = null,
+        RetryPolicyOptions? retryPolicy = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArmClient armClient = await CreateArmClientAsync(tenantIdOrName: tenant, retryPolicy: retryPolicy, cancellationToken: cancellationToken);
+
+        var drillId = ResilienceManagementDrillResource.CreateResourceIdentifier(serviceGroup, drill);
+        ResilienceManagementDrillResource drillResource = armClient.GetResilienceManagementDrillResource(drillId);
+        ValidateForExecutionContent content = ArmResilienceManagementModelFactory.ValidateForExecutionContent(sourceLocations);
+        string operationId = Guid.NewGuid().ToString();
+
+        var operation = await drillResource.ValidateForExecutionAsync(
+            WaitUntil.Started,
+            operationId,
+            content,
+            cancellationToken);
+
+        return new DrillValidateForExecutionResult(operationId, operation.HasCompleted);
+    }
+
     public async Task<IEnumerable<ResourceSummary>> ListDrillResourcesAsync(string serviceGroup, string drill, string? tenant = null, RetryPolicyOptions? retryPolicy = null, CancellationToken cancellationToken = default)
     {
         ArmClient armClient = await CreateArmClientAsync(tenantIdOrName: tenant, retryPolicy: retryPolicy, cancellationToken: cancellationToken);
