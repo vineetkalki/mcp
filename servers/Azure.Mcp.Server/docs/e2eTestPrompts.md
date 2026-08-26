@@ -1,6 +1,6 @@
 # Azure MCP End-to-End Test Prompts
 
-This file contains prompts used for end-to-end testing to ensure each tool is invoked properly by MCP clients. The tables are organized by Azure MCP Server areas in alphabetical order, with Tool Names sorted alphabetically within each table.
+Contains prompts used for end-to-end testing to ensure each tool is invoked properly by MCP clients. The tables are organized by Azure MCP Server areas in alphabetical order, with Tool Names sorted alphabetically within each table.
 
 ## Azure Advisor
 
@@ -613,6 +613,20 @@ This file contains prompts used for end-to-end testing to ensure each tool is in
 | iothub_hub_get | Get details for IoT Hub <hub_name> in resource group <resource_group_name> |
 | iothub_hub_get | Show IoT Hub <hub_name> in resource group <resource_group_name> for subscription <subscription_id> |
 | iothub_hub_get | Retrieve IoT Hub <hub_name> metadata from resource group <resource_group_name> |
+| iothub_routing_endpoint-health | Show routing endpoints for IoT Hub <hub_name> in resource group <resource_group_name> |
+| iothub_routing_endpoint-health | Get the routing endpoint health list for IoT Hub <hub_name> |
+| iothub_routing_endpoint-health | Show routing endpoint <endpoint_name> for IoT Hub <hub_name> in resource group <resource_group_name> |
+| iothub_routing_endpoint-health | Are the routing endpoints for IoT Hub <hub_name> healthy or degraded |
+| iothub_routing_endpoint-health | Show routing endpoint health for IoT Hub <hub_name> over the last 6 hours |
+| iothub_routing_endpoint-health | Show routing endpoint health for IoT Hub <hub_name> from <start_time> through <end_time> |
+| iothub_routing_endpoint-latency | Show routing delivery latency for IoT Hub <hub_name> in resource group <resource_group_name> |
+| iothub_routing_endpoint-latency | Get the routing latency trend for endpoint <endpoint_name> on IoT Hub <hub_name> |
+| iothub_routing_endpoint-latency | Show routing endpoint latency for IoT Hub <hub_name> over the last 6 hours |
+| iothub_routing_endpoint-latency | Show 15-minute routing latency buckets for IoT Hub <hub_name> from <start_time> through <end_time> |
+| iothub_routing_endpoint-diagnose | Diagnose routing endpoint problems for IoT Hub <hub_name> in resource group <resource_group_name> |
+| iothub_routing_endpoint-diagnose | What is causing routing failures on IoT Hub <hub_name> |
+| iothub_routing_endpoint-diagnose | Diagnose routing endpoint <endpoint_name> on IoT Hub <hub_name> over the last 6 hours |
+| iothub_routing_endpoint-diagnose | Diagnose IoT Hub <hub_name> routing between <start_time> and <end_time> |
 
 ## Azure Key Vault
 

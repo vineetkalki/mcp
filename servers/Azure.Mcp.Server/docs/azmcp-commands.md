@@ -1,7 +1,7 @@
 # Azure MCP CLI Command Reference
 
 > [!IMPORTANT]
-> The Azure MCP Server has two modes: MCP Server mode and CLI mode.  When you start the MCP Server with `azmcp server start` that will expose an endpoint for MCP Client communication. The `azmcp` CLI also exposes all of the tools via a command line interface, i.e. `azmcp subscription list`.  In this document, "command" refers to CLI commands (e.g., `azmcp storage account list`), while "tool" refers to MCP server tools that can be invoked by MCP clients.
+> The Azure MCP Server has two modes: MCP Server mode and CLI mode. When you start the MCP Server with `azmcp server start` that will expose an endpoint for MCP Client communication. The `azmcp` CLI also exposes all of the tools via a command line interface, i.e. `azmcp subscription list`. In this document, "command" refers to CLI commands (e.g., `azmcp storage account list`), while "tool" refers to MCP server tools that can be invoked by MCP clients.
 
 ## Global Options
 
@@ -2761,7 +2761,39 @@ azmcp insights get --scope tenant \
 azmcp iothub hub get --subscription <subscription> \
                      --resource-group <resource-group> \
                      --hub-name <iot-hub-name>
-```                     
+
+# Get health for IoT Hub message-routing endpoints
+# ❌ Destructive | ✅ Idempotent | ❌ OpenWorld | ✅ ReadOnly | ❌ Secret | ❌ LocalRequired
+azmcp iothub routing endpoint-health --subscription <subscription> \
+                                     --resource-group <resource-group> \
+                                     --hub-name <iot-hub-name> \
+                                     [--endpoint-name <endpoint-name>] \
+                                     [--lookback <iso8601-duration-or-hours>] \
+                                     [--start-time <iso8601-datetime> --end-time <iso8601-datetime>]
+
+# Get routing latency, threshold, and active hourly trend per endpoint
+# ❌ Destructive | ✅ Idempotent | ❌ OpenWorld | ✅ ReadOnly | ❌ Secret | ❌ LocalRequired
+azmcp iothub routing endpoint-latency --subscription <subscription> \
+                                      --resource-group <resource-group> \
+                                      --hub-name <iot-hub-name> \
+                                      [--endpoint-name <endpoint-name>] \
+                                      [--lookback <iso8601-duration-or-hours>] \
+                                      [--start-time <iso8601-datetime> --end-time <iso8601-datetime>] \
+                                      [--interval <iso8601-duration>]
+
+# Diagnose routing problems with fault categories and user-friendly next steps
+# ❌ Destructive | ✅ Idempotent | ❌ OpenWorld | ✅ ReadOnly | ❌ Secret | ❌ LocalRequired
+azmcp iothub routing endpoint-diagnose --subscription <subscription> \
+                                       --resource-group <resource-group> \
+                                       --hub-name <iot-hub-name> \
+                                       [--endpoint-name <endpoint-name>] \
+                                       [--lookback <iso8601-duration-or-hours>] \
+                                       [--start-time <iso8601-datetime> --end-time <iso8601-datetime>] \
+                                       [--interval <iso8601-duration>]
+```
+
+`--start-time` and `--end-time` must be supplied together. When supplied, they take precedence over
+`--lookback`. The maximum relative or absolute observation window is 30 days.
 
 ### Azure Key Vault Operations
 

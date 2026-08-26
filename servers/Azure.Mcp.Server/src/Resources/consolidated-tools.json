@@ -2160,8 +2160,8 @@
       ]
     },
     {
-      "name": "get_azure_iot_hub",
-      "description": "Get details about an Azure IoT Hub.",
+        "name": "get_azure_iot_hub",
+        "description": "Get details about an Azure IoT Hub.",
       "toolMetadata": {
         "destructive": {
           "value": false,
@@ -2189,7 +2189,10 @@
         }
       },
       "mappedToolList": [
-        "iothub_hub_get"
+        "iothub_hub_get",
+        "iothub_routing_endpoint-health",
+        "iothub_routing_endpoint-latency",
+        "iothub_routing_endpoint-diagnose"
       ]
     },
     {

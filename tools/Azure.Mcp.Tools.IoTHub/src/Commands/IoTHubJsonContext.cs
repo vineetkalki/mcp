@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Azure.Mcp.Tools.IoTHub.Commands.IoTHub;
+using Azure.Mcp.Tools.IoTHub.Commands.Routing;
 using Azure.Mcp.Tools.IoTHub.Models;
 
 namespace Azure.Mcp.Tools.IoTHub.Commands;
@@ -10,6 +11,23 @@ namespace Azure.Mcp.Tools.IoTHub.Commands;
 [JsonSerializable(typeof(IoTHubDescription))]
 [JsonSerializable(typeof(IoTHubGetCommand.IoTHubGetCommandResult))]
 [JsonSerializable(typeof(IoTHubProperties))]
+[JsonSerializable(typeof(RoutingEndpointHealth))]
+[JsonSerializable(typeof(RoutingEndpointImpactDetails))]
+[JsonSerializable(typeof(RoutingTargetResourceSignals))]
+[JsonSerializable(typeof(RoutingTargetConfigurationSignals))]
+[JsonSerializable(typeof(IReadOnlyDictionary<string, double>))]
+[JsonSerializable(typeof(RoutingEndpointDetails))]
+[JsonSerializable(typeof(RoutingEndpointExploration))]
+[JsonSerializable(typeof(RoutingEndpointStatus))]
+[JsonSerializable(typeof(RoutingEndpointLatency))]
+[JsonSerializable(typeof(LatencyTrendPoint))]
+[JsonSerializable(typeof(IReadOnlyList<LatencyTrendPoint>))]
+[JsonSerializable(typeof(IReadOnlyList<string>))]
+[JsonSerializable(typeof(RoutingEndpointHealthGetCommand.RoutingEndpointHealthGetCommandResult))]
+[JsonSerializable(typeof(RoutingLatencyGetCommand.RoutingLatencyGetCommandResult))]
+[JsonSerializable(typeof(RoutingDiagnoseCommand.RoutingDiagnoseCommandResult))]
+[JsonSerializable(typeof(EndpointHealthDataListResult))]
+[JsonSerializable(typeof(EndpointHealthData))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]

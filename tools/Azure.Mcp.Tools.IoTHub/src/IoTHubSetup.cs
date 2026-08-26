@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using Azure.Mcp.Tools.IoTHub.Commands.IoTHub;
+using Azure.Mcp.Tools.IoTHub.Commands.Routing;
 using Azure.Mcp.Tools.IoTHub.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Mcp.Core.Areas;
@@ -19,6 +20,9 @@ public class IoTHubSetup : IAreaSetup
     {
         services.AddSingleton<IIoTHubService, IoTHubService>();
         services.AddSingleton<IoTHubGetCommand>();
+        services.AddSingleton<RoutingEndpointHealthGetCommand>();
+        services.AddSingleton<RoutingLatencyGetCommand>();
+        services.AddSingleton<RoutingDiagnoseCommand>();
     }
 
     public CommandGroup RegisterCommands(IServiceProvider serviceProvider)
@@ -31,6 +35,13 @@ public class IoTHubSetup : IAreaSetup
         iothub.AddSubGroup(hub);
 
         hub.AddCommand<IoTHubGetCommand>(serviceProvider);
+
+        var routing = new CommandGroup("routing", "IoT Hub message-routing operations.");
+        iothub.AddSubGroup(routing);
+
+        routing.AddCommand<RoutingEndpointHealthGetCommand>(serviceProvider);
+        routing.AddCommand<RoutingLatencyGetCommand>(serviceProvider);
+        routing.AddCommand<RoutingDiagnoseCommand>(serviceProvider);
 
         return iothub;
     }
