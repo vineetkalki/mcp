@@ -913,8 +913,11 @@ The `Interaction` column describes whether a prompt can invoke its tool immediat
 | resilience_drill_check-resync-readiness | Check whether resilience drill <drill_name> in service group <service_group> is ready to resync | none |
 | resilience_drill_check-resync-readiness | Run a resync readiness check for resilience drill <drill_name> in service group <service_group> | none |
 | resilience_drill_validate-for-execution | Validate resilience drill <drill_name> in service group <service_group> for execution from source location <source_location> | none |
+| resilience_drill_resource_add-or-update | Add resource <resource_id> to resilience drill <drill_name> in service group <service_group> with a fault duration of <fault_duration_minutes> minutes | none |
+| resilience_drill_resource_add-or-update | Update or exclude the resources of resilience drill <drill_name> in service group <service_group> | none |
 | resilience_drill_run_get | List all runs of drill <drill_name> in service group <service_group> | none |
 | resilience_drill_run_get | Get drill run <drill_run_name> for drill <drill_name> in service group <service_group> | none |
+| resilience_drill_run_mark-complete | Mark the FaultInjection stage of drill run <drill_run_name> for drill <drill_name> in service group <service_group> as complete | none |
 | resilience_drill_run_resource_get | List all resources of drill run <drill_run_name> for drill <drill_name> in service group <service_group> | none |
 | resilience_drill_run_resource_get | Get resource <resource_name> from drill run <drill_run_name> for drill <drill_name> in service group <service_group> | none |
 | resilience_goal_assignment_get | List all resilience goal assignments in service group <service_group> | none |

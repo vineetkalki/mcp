@@ -64,6 +64,8 @@ public interface IResilienceManagementService
 
     Task<DrillValidateForExecutionResult> ValidateDrillForExecutionAsync(string serviceGroup, string drill, IEnumerable<string> sourceLocations, string? tenant = null, RetryPolicyOptions? retryPolicy = null, CancellationToken cancellationToken = default);
 
+    Task<DrillAddOrUpdateResourcesResult> AddOrUpdateDrillResourcesAsync(string serviceGroup, string drill, AddOrUpdateResourcesContent content, string? tenant = null, RetryPolicyOptions? retryPolicy = null, CancellationToken cancellationToken = default);
+
     Task<IEnumerable<ResourceSummary>> ListDrillResourcesAsync(string serviceGroup, string drill, string? tenant = null, RetryPolicyOptions? retryPolicy = null, CancellationToken cancellationToken = default);
 
     Task<DrillResourceInfo> GetDrillResourceAsync(string serviceGroup, string drill, string drillResource, string? tenant = null, RetryPolicyOptions? retryPolicy = null, CancellationToken cancellationToken = default);
@@ -75,6 +77,8 @@ public interface IResilienceManagementService
     Task<IEnumerable<ResourceSummary>> ListDrillRunResourcesAsync(string serviceGroup, string drill, string drillRun, string? tenant = null, RetryPolicyOptions? retryPolicy = null, CancellationToken cancellationToken = default);
 
     Task<JsonElement> GetDrillRunResourceAsync(string serviceGroup, string drill, string drillRun, string drillRunResource, string? tenant = null, RetryPolicyOptions? retryPolicy = null, CancellationToken cancellationToken = default);
+
+    Task<DrillRunMarkCompleteResult> MarkDrillRunCompleteAsync(string serviceGroup, string drill, string drillRun, string stage, string? tenant = null, RetryPolicyOptions? retryPolicy = null, CancellationToken cancellationToken = default);
 
     Task<UsagePlanInfo> CreateUsagePlanAsync(string resourceGroup, string usagePlan, UsagePlanKind planType, string subscription, string? tenant = null, RetryPolicyOptions? retryPolicy = null, CancellationToken cancellationToken = default);
 
