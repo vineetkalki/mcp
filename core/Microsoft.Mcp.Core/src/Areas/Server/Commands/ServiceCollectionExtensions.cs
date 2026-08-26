@@ -59,14 +59,6 @@ public static partial class ServiceCollectionExtensions
             Cloud = serverStartOptions.Cloud
         };
 
-        if (serverStartOptions.Mode == ModeTypes.NamespaceProxy)
-        {
-            if (serverRuntimeConfiguration.Namespace == null || serverRuntimeConfiguration.Namespace.Length == 0)
-            {
-                serverRuntimeConfiguration.Namespace = ["extension"];
-            }
-        }
-
         services.AddSingleton(serverRuntimeConfiguration);
         services.AddSingleton(Options.Create(serverRuntimeConfiguration));
 
@@ -164,9 +156,26 @@ public static partial class ServiceCollectionExtensions
                 ));
 
                 // Append extension commands when no other namespaces are specified.
-                if (utilityServerRuntimeConfiguration.Namespace?.SequenceEqual(["extension"]) == true)
+                if (serverRuntimeConfiguration.Namespace == null ||
+                    serverRuntimeConfiguration.Namespace.Length == 0 ||
+                    serverRuntimeConfiguration.Namespace.SequenceEqual(["extension"]))
                 {
-                    toolLoaders.Add(sp.GetRequiredService<CommandFactoryToolLoader>());
+                    var extensionServerRuntimeConfiguration = new ServerRuntimeConfiguration
+                    {
+                        Namespace = ["extension"],
+                        ReadOnly = serverRuntimeConfiguration.ReadOnly,
+                        DangerouslyDisableElicitation = serverRuntimeConfiguration.DangerouslyDisableElicitation,
+                        Tool = serverRuntimeConfiguration.Tool,
+                        Transport = serverRuntimeConfiguration.Transport,
+                        Mode = serverRuntimeConfiguration.Mode,
+                        Cloud = serverRuntimeConfiguration.Cloud
+                    };
+
+                    toolLoaders.Add(new CommandFactoryToolLoader(
+                        sp.GetRequiredService<ICommandFactory>(),
+                        Options.Create(extensionServerRuntimeConfiguration),
+                        loggerFactory.CreateLogger<CommandFactoryToolLoader>()
+                    ));
                 }
 
                 return new CompositeToolLoader(toolLoaders, loggerFactory.CreateLogger<CompositeToolLoader>());

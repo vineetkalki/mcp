@@ -124,6 +124,10 @@ public class ServiceCollectionExtensionsTests
         // In namespace mode, we only use RegistryDiscoveryStrategy (for external MCP servers)
         Assert.NotNull(provider.GetService<IMcpDiscoveryStrategy>());
         Assert.IsType<RegistryDiscoveryStrategy>(provider.GetService<IMcpDiscoveryStrategy>());
+
+        // An omitted namespace must remain unfiltered for NamespaceToolLoader. Extension commands
+        // use a separate loader configuration and must not replace this runtime selection.
+        Assert.Null(provider.GetRequiredService<ServerRuntimeConfiguration>().Namespace);
     }
 
     [Fact]
