@@ -1,0 +1,4 @@
+.demo-server.pid
+.demo-server.out.log
+.demo-server.err.log
+.demo-action.json

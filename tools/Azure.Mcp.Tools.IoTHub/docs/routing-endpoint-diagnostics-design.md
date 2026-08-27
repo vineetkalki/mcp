@@ -22,10 +22,24 @@ destination deep-dive approach described below.
 
 ## User story
 
-As an IoT Hub operator, I want to ask:
+As a person responsible for an IoT solution, I want to ask natural-language questions about where my
+device messages are going, whether those destinations are working, and what I should fix. I should not
+need to know Azure Monitor metric names, endpoint types, or MCP command syntax.
 
-> Are my routing endpoints healthy over a specific time window, which endpoints are slow or unavailable,
-> and what is the likely cause?
+### Example user queries and command selection
+
+| User intent | Example user query | MCP command selected by the agent |
+| --- | --- | --- |
+| Check everything now | "Are all the places my device messages go working?" | `iothub routing endpoint-health` |
+| Check a specific historical period | "How were my message destinations doing yesterday between 9 AM and noon?" | `iothub routing endpoint-health --start-time <start> --end-time <end>` |
+| Investigate slow delivery | "Why are my device messages taking so long to arrive?" | `iothub routing endpoint-latency` |
+| View a latency trend | "Show whether message delivery got slower over the last day." | `iothub routing endpoint-latency --lookback PT24H --interval PT1H` |
+| Diagnose a general failure | "Some messages are not arriving. Can you tell me why?" | `iothub routing endpoint-diagnose` |
+| Diagnose one destination | "Why is `storage-noauth-endpoint` failing?" | `iothub routing endpoint-diagnose --endpoint-name storage-noauth-endpoint` |
+
+The agent resolves the subscription, resource group, IoT Hub, endpoint name, time range, and interval from
+conversation context or asks for any required value that is missing. Users do not need to provide CLI
+flags.
 
 The answer should:
 
@@ -318,66 +332,105 @@ diagnosis. Evidence is correlated into one result per configured endpoint.
 
 ### Architecture and data sources
 
+The visual's nodes represent management-plane calls. The commands do not connect to an Event Hub,
+Service Bus entity, Storage container, or Cosmos DB container data plane, and they do not use destination
+connection strings. All requests go to the Azure cloud's configured ARM endpoint, so the same flow works
+in public and sovereign clouds.
+
+#### IoT Hub configuration
+
+The service first resolves the subscription and constructs the IoT Hub resource ID:
+
+```text
+/subscriptions/{subscription}/resourceGroups/{resourceGroup}/providers/Microsoft.Devices/IotHubs/{hubName}
+```
+
+It reads that resource through the Azure Resource Manager SDK's generic-resource client. The response
+contains the routing configuration and endpoint definitions used to identify endpoint names, endpoint
+IDs, destination resource IDs, entity paths, and container/database names. This is the **IoT Hub -
+Configuration** node in the visual.
+
+#### IoT Hub endpoint-health REST API
+
+The Azure Resource Manager SDK does not expose the routing endpoint-health operation used here, so the
+service sends an authenticated HTTP GET through `IHttpClientFactory`:
+
+```http
+GET {armEndpoint}{iotHubResourceId}/routingEndpointsHealth?api-version=2023-06-30
+```
+
+The request uses an ARM access token for the selected tenant. The service follows every `nextLink`
+returned by the API. Health records are keyed by routing endpoint ID, while the commands return endpoint
+names, so the service joins each health record to the endpoint definitions from the IoT Hub configuration
+response. The API contributes the reported health status, last send attempt, last successful send, and
+last known error shown by the **IoT Hub - Endpoint health** node.
+
+#### Hub-wide Azure Monitor queries
+
+The service uses `ArmClient.GetMonitorMetricsAsync` against the IoT Hub resource ID. This is the SDK
+equivalent of querying the ARM metrics endpoint under
+`{iotHubResourceId}/providers/microsoft.insights/metrics`. Two requests run concurrently and query every
+endpoint in one pass:
+
+| Metric | Namespace | Aggregation | Dimension filter | Purpose |
+| --- | --- | --- | --- | --- |
+| `RoutingDeliveries` | `Microsoft.Devices/IotHubs` | `Total` | `EndpointName eq '*' and Result eq '*'` | Sum successful and failed routing events per endpoint. |
+| `RoutingDeliveryLatency` | `Microsoft.Devices/IotHubs` | `Average` | `EndpointName eq '*'` | Build average, peak, and interval-based latency trends per endpoint. |
+
+Both queries use the selected observation window and interval. Splitting by `EndpointName` avoids a
+separate Azure Monitor request for each configured endpoint. These calls correspond to the **IoT Hub -
+Routing deliveries** and **IoT Hub - Delivery latency** nodes.
+
+#### Destination existence through ARM
+
+All three commands verify that each configured destination still exists. The service sends ARM GET
+requests to the routed subresource first. If ARM reports it missing, the service checks the parent
+resource to distinguish a deleted namespace/account from a deleted queue, topic, event hub, or container.
+
+| Endpoint type | Parent and routed-subresource path | ARM API version |
+| --- | --- | --- |
+| Event Hubs | `Microsoft.EventHub/namespaces/{namespace}/eventhubs/{eventHub}` | `2024-01-01` |
+| Service Bus queue | `Microsoft.ServiceBus/namespaces/{namespace}/queues/{queue}` | `2024-01-01` |
+| Service Bus topic | `Microsoft.ServiceBus/namespaces/{namespace}/topics/{topic}` | `2024-01-01` |
+| Blob Storage | `Microsoft.Storage/storageAccounts/{account}/blobServices/default/containers/{container}` | `2023-05-01` |
+| Cosmos DB SQL | `Microsoft.DocumentDB/databaseAccounts/{account}/sqlDatabases/{database}/containers/{container}` | `2024-05-15` |
+
+Each path is rooted under the destination's configured subscription and resource group. A definitive ARM
+not-found response produces `unavailable`; authorization or another inconclusive response does not get
+misreported as a missing resource. This is the **Destination - Resource existence** node.
+
 #### Shared evidence used by all commands
 
-| Source | Data | Query pattern |
+| Source | Transport and scope | Request count |
 | --- | --- | --- |
-| IoT Hub ARM resource | Endpoint definitions and route configuration | Once per request |
-| `routingEndpointsHealth` REST API | Health status, attempts, success, last error | Once, with paging |
-| Azure Monitor `RoutingDeliveries` | Success/failure counts split by endpoint and result | Hub-wide query |
-| Azure Monitor `RoutingDeliveryLatency` | Bucketed latency split by endpoint | Hub-wide query |
-| Destination ARM resource | Parent and subresource existence | Per endpoint |
+| IoT Hub configuration | ARM SDK, IoT Hub resource | Once per command |
+| `routingEndpointsHealth` | Direct ARM REST GET, IoT Hub resource, paged | Once per page |
+| `RoutingDeliveries` | Azure Monitor through ARM, IoT Hub resource | Once per command |
+| `RoutingDeliveryLatency` | Azure Monitor through ARM, IoT Hub resource | Once per command |
+| Destination existence | Direct ARM REST GET, routed subresource and sometimes parent | Per endpoint |
 
 #### Additional diagnosis evidence
 
-| Destination | Azure Monitor evidence |
+Only `endpoint-diagnose` performs the destination deep dive. These Azure Monitor calls target the parent
+namespace or account rather than the routed entity, use one-hour buckets, and use the selected observation
+window:
+
+| Destination | Resource metric namespace and query |
 | --- | --- |
-| Event Hubs | `SuccessfulRequests`, `ServerErrors`, `UserErrors`, `ThrottledRequests`, `QuotaExceededErrors` |
-| Service Bus | `IncomingMessages`, `IncomingRequests`, `ServerErrors`, `UserErrors`, `ThrottledRequests` |
-| Blob Storage | `Transactions` split by `ResponseType` |
-| Cosmos DB | `TotalRequests` split by `StatusCode`, plus `NormalizedRUConsumption` |
+| Event Hubs | `Microsoft.EventHub/namespaces`: total `SuccessfulRequests`, `ServerErrors`, `UserErrors`, `ThrottledRequests`, and `QuotaExceededErrors`. |
+| Service Bus | `Microsoft.ServiceBus/namespaces`: total `IncomingMessages`, `IncomingRequests`, `ServerErrors`, `UserErrors`, and `ThrottledRequests`. |
+| Blob Storage | `Microsoft.Storage/storageAccounts`: total `Transactions`, split with `ResponseType eq '*'`. |
+| Cosmos DB | `Microsoft.DocumentDB/databaseAccounts`: count `TotalRequests`, split with `StatusCode eq '*'`, plus maximum `NormalizedRUConsumption`. |
+
+Metrics without dimensions are requested together. If Azure Monitor rejects a batch because one metric is
+unsupported, the service retries the metrics individually so the remaining evidence can still be used.
+Sibling endpoints that share a namespace or account also share the same in-request deep-dive task.
 
 Diagnosis also reads Blob Storage network configuration (`publicNetworkAccess`, firewall default action,
-and bypass) to distinguish permission failures from network restrictions.
+and bypass) with an ARM GET of the Storage account using API version `2023-05-01`. This is the
+**Storage - Network configuration** node and helps distinguish permission failures from network
+restrictions.
 
-## Fault attribution
-
-Structured fault domains:
-
-- `None`
-- `IoTHubDelivery`
-- `TargetThrottling`
-- `TargetServerError`
-- `TargetUserError`
-- `TargetAuthorization`
-- `TargetNetwork`
-- `TargetUnavailable`
-- `Inconclusive`
-- `Unknown`
-
-Attribution favors strong, actionable destination evidence. Throttling takes precedence over generic
-client errors when both are present. Weak or conflicting evidence remains `Inconclusive`.
-
-## Performance and scalability
-
-- Hub routing metrics are queried once and split by endpoint.
-- Endpoint-health records are queried once and re-keyed from endpoint ID to endpoint name.
-- Destination metric/configuration tasks are cached per destination during one diagnosis request, so
-  sibling endpoints sharing a namespace/account reuse work.
-- Hub metric queries share an ARM client; each destination deep dive reuses one ARM client.
-- Endpoints are evaluated concurrently.
-- Failed optional metric queries return partial evidence rather than failing the entire request.
-
-## Security and compatibility
-
-- Commands are read-only and transport-agnostic.
-- Authentication uses existing Azure credential abstractions and ARM tokens.
-- HTTP calls use `IHttpClientFactory`.
-- Connection strings, keys, and endpoint identities are not deserialized or returned.
-- Response serialization uses `System.Text.Json` source generation for AOT compatibility.
-- Commands hold no per-request mutable instance state.
-- Default endpoint type, health, and fault-domain values pass through without a presentation mapping
-  layer, reducing compatibility risk if Azure adds new values.
 
 ## Error handling
 

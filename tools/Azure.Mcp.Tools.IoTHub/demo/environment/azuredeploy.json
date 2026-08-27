@@ -1,0 +1,756 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "Provisions the temporary IoT Hub routing demo environment with identity-based custom endpoints for Event Hubs, Service Bus, Blob Storage, and Cosmos DB. IoT Hub Storage routing supports Blob Storage and ADLS Gen2 containers, not Azure Table Storage. A device is not created here; create it with send-messages.ps1. Four negative-test endpoints are initially healthy because IoT Hub validates them at creation time. Run break-endpoints.ps1 after deployment to remove Storage authorization, delete a Service Bus namespace, delete a Service Bus queue, and disable Storage public network access."
+  },
+  "parameters": {
+    "baseName": {
+      "type": "string",
+      "defaultValue": "iothrottle",
+      "minLength": 3,
+      "maxLength": 11,
+      "metadata": {
+        "description": "Short prefix for all resource names. Lowercase letters and digits only (a global-unique suffix is appended)."
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Location for all resources."
+      }
+    },
+    "iotHubSku": {
+      "type": "string",
+      "defaultValue": "S1",
+      "allowedValues": [ "S1", "S2", "S3" ],
+      "metadata": {
+        "description": "IoT Hub SKU. S1 has the lowest routing-egress throttle limits, which makes throttling easiest to reproduce."
+      }
+    },
+    "iotHubCapacity": {
+      "type": "int",
+      "defaultValue": 1,
+      "minValue": 1,
+      "maxValue": 10,
+      "metadata": {
+        "description": "IoT Hub unit count. Keep at 1 to keep the routing throttle threshold low."
+      }
+    },
+    "remoteEventHubSubscriptionId": {
+      "type": "string",
+      "defaultValue": "83cea17b-a5e0-4018-a2f4-54580033beb4",
+      "metadata": {
+        "description": "Subscription id of the remote (cross-subscription) Event Hub used by the 'remote' route. The hub's managed identity must be granted 'Azure Event Hubs Data Sender' on this Event Hub separately (it is outside this deployment's scope)."
+      }
+    },
+    "remoteEventHubResourceGroup": {
+      "type": "string",
+      "defaultValue": "test",
+      "metadata": {
+        "description": "Resource group of the remote Event Hub namespace."
+      }
+    },
+    "remoteEventHubNamespace": {
+      "type": "string",
+      "defaultValue": "remote-ehns-test-vk-8626",
+      "metadata": {
+        "description": "Remote Event Hubs namespace name."
+      }
+    },
+    "remoteEventHubName": {
+      "type": "string",
+      "defaultValue": "remote-eventhub",
+      "metadata": {
+        "description": "Remote Event Hub (entity) name."
+      }
+    }
+  },
+  "variables": {
+    "suffix": "[take(uniqueString(resourceGroup().id), 6)]",
+    "identityName": "[format('{0}-id-{1}', parameters('baseName'), variables('suffix'))]",
+    "iotHubName": "[format('{0}hub{1}', parameters('baseName'), variables('suffix'))]",
+    "ehNamespaceName": "[format('{0}eh{1}', parameters('baseName'), variables('suffix'))]",
+    "ehName": "telemetry",
+    "sbNamespaceName": "[format('{0}sb{1}', parameters('baseName'), variables('suffix'))]",
+    "sbTopicName": "telemetry",
+    "sbQueueName": "telemetry-queue",
+    "storageName": "[toLower(format('{0}st{1}', parameters('baseName'), variables('suffix')))]",
+    "storageContainerName": "telemetry",
+    "cosmosName": "[toLower(format('{0}cos{1}', parameters('baseName'), variables('suffix')))]",
+    "cosmosDbName": "iothubdb",
+    "cosmosContainerName": "telemetry",
+    "storageNoAuthName": "[toLower(format('{0}noauth{1}', parameters('baseName'), variables('suffix')))]",
+    "storageNoAuthContainerName": "telemetry",
+    "storageNoNetName": "[toLower(format('{0}nonet{1}', parameters('baseName'), variables('suffix')))]",
+    "storageNoNetContainerName": "telemetry",
+    "breakSbNamespaceName": "[format('{0}sbx{1}', parameters('baseName'), variables('suffix'))]",
+    "breakQueueName": "break-queue",
+    "identityId": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('identityName'))]",
+    "eventHubsDataSenderRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '2b629674-e913-4c01-ae53-ef4638d8f975')]",
+    "serviceBusDataSenderRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '69a216fc-b8fb-44d8-bc22-1f3c2cd27a39')]",
+    "storageBlobDataContributorRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')]",
+    "cosmosDataContributorRoleId": "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlRoleDefinitions', variables('cosmosName'), '00000000-0000-0000-0000-000000000002')]"
+  },
+  "resources": [
+    {
+      "comments": "User-assigned managed identity used by IoT Hub to authenticate to every routing endpoint (no keys/connection strings).",
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[variables('identityName')]",
+      "location": "[parameters('location')]"
+    },
+    {
+      "comments": "Event Hubs namespace with local (SAS) auth disabled.",
+      "type": "Microsoft.EventHub/namespaces",
+      "apiVersion": "2024-01-01",
+      "name": "[variables('ehNamespaceName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard",
+        "tier": "Standard",
+        "capacity": 1
+      },
+      "properties": {
+        "disableLocalAuth": true,
+        "minimumTlsVersion": "1.2"
+      }
+    },
+    {
+      "type": "Microsoft.EventHub/namespaces/eventhubs",
+      "apiVersion": "2024-01-01",
+      "name": "[format('{0}/{1}', variables('ehNamespaceName'), variables('ehName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces', variables('ehNamespaceName'))]"
+      ],
+      "properties": {
+        "messageRetentionInDays": 1,
+        "partitionCount": 2
+      }
+    },
+    {
+      "comments": "Service Bus namespace (Standard is required for topics) with local (SAS) auth disabled.",
+      "type": "Microsoft.ServiceBus/namespaces",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[variables('sbNamespaceName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard",
+        "tier": "Standard"
+      },
+      "properties": {
+        "disableLocalAuth": true,
+        "minimumTlsVersion": "1.2"
+      }
+    },
+    {
+      "type": "Microsoft.ServiceBus/namespaces/topics",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[format('{0}/{1}', variables('sbNamespaceName'), variables('sbTopicName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ServiceBus/namespaces', variables('sbNamespaceName'))]"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.ServiceBus/namespaces/queues",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[format('{0}/{1}', variables('sbNamespaceName'), variables('sbQueueName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ServiceBus/namespaces', variables('sbNamespaceName'))]"
+      ],
+      "properties": {}
+    },
+    {
+      "comments": "Storage account with shared-key (local) auth disabled so only identity-based access works.",
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-05-01",
+      "name": "[variables('storageName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "allowSharedKeyAccess": false,
+        "minimumTlsVersion": "TLS1_2",
+        "supportsHttpsTrafficOnly": true,
+        "allowBlobPublicAccess": false
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/default/{1}', variables('storageName'), variables('storageContainerName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]"
+      ],
+      "properties": {
+        "publicAccess": "None"
+      }
+    },
+    {
+      "comments": "Negative test (authorization failure): a Storage account that exists but is deliberately NOT granted to the hub identity. The endpoint deploys, but routing delivery fails at runtime with an authorization error.",
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-05-01",
+      "name": "[variables('storageNoAuthName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "allowSharedKeyAccess": false,
+        "minimumTlsVersion": "TLS1_2",
+        "supportsHttpsTrafficOnly": true,
+        "allowBlobPublicAccess": false
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/default/{1}', variables('storageNoAuthName'), variables('storageNoAuthContainerName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageNoAuthName'))]"
+      ],
+      "properties": {
+        "publicAccess": "None"
+      }
+    },
+    {
+      "comments": "Networking-disabled negative test target: a Storage account created with public network access ENABLED so the endpoint deploys. break-endpoints.ps1 sets public network access to Disabled afterward so routing delivery can no longer connect.",
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-05-01",
+      "name": "[variables('storageNoNetName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "allowSharedKeyAccess": false,
+        "minimumTlsVersion": "TLS1_2",
+        "supportsHttpsTrafficOnly": true,
+        "allowBlobPublicAccess": false,
+        "publicNetworkAccess": "Enabled"
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/default/{1}', variables('storageNoNetName'), variables('storageNoNetContainerName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageNoNetName'))]"
+      ],
+      "properties": {
+        "publicAccess": "None"
+      }
+    },
+    {
+      "comments": "Missing-resource negative test namespace. Created healthy (with a queue and role) so the endpoint deploys; break-endpoints.ps1 deletes the entire namespace afterward so the endpoint target no longer resolves.",
+      "type": "Microsoft.ServiceBus/namespaces",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[variables('breakSbNamespaceName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard",
+        "tier": "Standard"
+      },
+      "properties": {
+        "disableLocalAuth": true,
+        "minimumTlsVersion": "1.2"
+      }
+    },
+    {
+      "type": "Microsoft.ServiceBus/namespaces/queues",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[format('{0}/{1}', variables('breakSbNamespaceName'), variables('sbQueueName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ServiceBus/namespaces', variables('breakSbNamespaceName'))]"
+      ],
+      "properties": {}
+    },
+    {
+      "comments": "Missing-sub-resource negative test queue on the main namespace. break-endpoints.ps1 deletes only this queue afterward, leaving the namespace intact.",
+      "type": "Microsoft.ServiceBus/namespaces/queues",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[format('{0}/{1}', variables('sbNamespaceName'), variables('breakQueueName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ServiceBus/namespaces', variables('sbNamespaceName'))]"
+      ],
+      "properties": {}
+    },
+    {
+      "comments": "Cosmos DB account with local (key) auth disabled.",
+      "type": "Microsoft.DocumentDB/databaseAccounts",
+      "apiVersion": "2024-05-15",
+      "name": "[variables('cosmosName')]",
+      "location": "[parameters('location')]",
+      "kind": "GlobalDocumentDB",
+      "properties": {
+        "databaseAccountOfferType": "Standard",
+        "disableLocalAuth": true,
+        "minimalTlsVersion": "Tls12",
+        "consistencyPolicy": {
+          "defaultConsistencyLevel": "Session"
+        },
+        "locations": [
+          {
+            "locationName": "[parameters('location')]",
+            "failoverPriority": 0,
+            "isZoneRedundant": false
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+      "apiVersion": "2024-05-15",
+      "name": "[format('{0}/{1}', variables('cosmosName'), variables('cosmosDbName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosName'))]"
+      ],
+      "properties": {
+        "resource": {
+          "id": "[variables('cosmosDbName')]"
+        },
+        "options": {
+          "throughput": 400
+        }
+      }
+    },
+    {
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+      "apiVersion": "2024-05-15",
+      "name": "[format('{0}/{1}/{2}', variables('cosmosName'), variables('cosmosDbName'), variables('cosmosContainerName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', variables('cosmosName'), variables('cosmosDbName'))]"
+      ],
+      "properties": {
+        "resource": {
+          "id": "[variables('cosmosContainerName')]",
+          "partitionKey": {
+            "paths": [ "/deviceId" ],
+            "kind": "Hash"
+          }
+        }
+      }
+    },
+    {
+      "comments": "Grant the managed identity permission to send to Event Hubs.",
+      "type": "Microsoft.EventHub/namespaces/providers/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[format('{0}/Microsoft.Authorization/{1}', variables('ehNamespaceName'), guid(resourceId('Microsoft.EventHub/namespaces', variables('ehNamespaceName')), variables('identityId'), variables('eventHubsDataSenderRoleId')))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces', variables('ehNamespaceName'))]",
+        "[variables('identityId')]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[variables('eventHubsDataSenderRoleId')]",
+        "principalId": "[reference(variables('identityId'), '2023-01-31').principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "comments": "Grant the managed identity permission to send to Service Bus.",
+      "type": "Microsoft.ServiceBus/namespaces/providers/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[format('{0}/Microsoft.Authorization/{1}', variables('sbNamespaceName'), guid(resourceId('Microsoft.ServiceBus/namespaces', variables('sbNamespaceName')), variables('identityId'), variables('serviceBusDataSenderRoleId')))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ServiceBus/namespaces', variables('sbNamespaceName'))]",
+        "[variables('identityId')]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[variables('serviceBusDataSenderRoleId')]",
+        "principalId": "[reference(variables('identityId'), '2023-01-31').principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "comments": "Grant the managed identity permission to write blobs (storage routing endpoint).",
+      "type": "Microsoft.Storage/storageAccounts/providers/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[format('{0}/Microsoft.Authorization/{1}', variables('storageName'), guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), variables('identityId'), variables('storageBlobDataContributorRoleId')))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageName'))]",
+        "[variables('identityId')]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[variables('storageBlobDataContributorRoleId')]",
+        "principalId": "[reference(variables('identityId'), '2023-01-31').principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "comments": "Grant the managed identity Cosmos DB data-plane write access (built-in Data Contributor).",
+      "type": "Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments",
+      "apiVersion": "2024-05-15",
+      "name": "[format('{0}/{1}', variables('cosmosName'), guid(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosName')), variables('identityId'), variables('cosmosDataContributorRoleId')))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosName'))]",
+        "[variables('identityId')]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[variables('cosmosDataContributorRoleId')]",
+        "principalId": "[reference(variables('identityId'), '2023-01-31').principalId]",
+        "scope": "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosName'))]"
+      }
+    },
+    {
+      "comments": "Blob Data Contributor for the no-auth negative test account. Granted so the endpoint passes IoT Hub creation-time validation; break-endpoints.ps1 removes it afterward to simulate an authorization failure.",
+      "type": "Microsoft.Storage/storageAccounts/providers/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[format('{0}/Microsoft.Authorization/{1}', variables('storageNoAuthName'), guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageNoAuthName')), variables('identityId'), variables('storageBlobDataContributorRoleId')))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageNoAuthName'))]",
+        "[variables('identityId')]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[variables('storageBlobDataContributorRoleId')]",
+        "principalId": "[reference(variables('identityId'), '2023-01-31').principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "comments": "Blob Data Contributor for the networking-disabled negative test account. break-endpoints.ps1 disables public network access afterward.",
+      "type": "Microsoft.Storage/storageAccounts/providers/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[format('{0}/Microsoft.Authorization/{1}', variables('storageNoNetName'), guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageNoNetName')), variables('identityId'), variables('storageBlobDataContributorRoleId')))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageNoNetName'))]",
+        "[variables('identityId')]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[variables('storageBlobDataContributorRoleId')]",
+        "principalId": "[reference(variables('identityId'), '2023-01-31').principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "comments": "Service Bus Data Sender for the missing-resource negative test namespace. break-endpoints.ps1 deletes the whole namespace afterward.",
+      "type": "Microsoft.ServiceBus/namespaces/providers/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[format('{0}/Microsoft.Authorization/{1}', variables('breakSbNamespaceName'), guid(resourceId('Microsoft.ServiceBus/namespaces', variables('breakSbNamespaceName')), variables('identityId'), variables('serviceBusDataSenderRoleId')))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ServiceBus/namespaces', variables('breakSbNamespaceName'))]",
+        "[variables('identityId')]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[variables('serviceBusDataSenderRoleId')]",
+        "principalId": "[reference(variables('identityId'), '2023-01-31').principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "comments": "IoT Hub with identity-based routing to all four endpoints. Routes select an endpoint by the message application property 'target'.",
+      "type": "Microsoft.Devices/IotHubs",
+      "apiVersion": "2023-06-30",
+      "name": "[variables('iotHubName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "[parameters('iotHubSku')]",
+        "capacity": "[parameters('iotHubCapacity')]"
+      },
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[variables('identityId')]": {}
+        }
+      },
+      "dependsOn": [
+        "[variables('identityId')]",
+        "[resourceId('Microsoft.EventHub/namespaces/eventhubs', variables('ehNamespaceName'), variables('ehName'))]",
+        "[resourceId('Microsoft.ServiceBus/namespaces/topics', variables('sbNamespaceName'), variables('sbTopicName'))]",
+        "[resourceId('Microsoft.ServiceBus/namespaces/queues', variables('sbNamespaceName'), variables('sbQueueName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', variables('storageName'), 'default', variables('storageContainerName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', variables('storageNoAuthName'), 'default', variables('storageNoAuthContainerName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', variables('storageNoNetName'), 'default', variables('storageNoNetContainerName'))]",
+        "[resourceId('Microsoft.ServiceBus/namespaces/queues', variables('breakSbNamespaceName'), variables('sbQueueName'))]",
+        "[resourceId('Microsoft.ServiceBus/namespaces/queues', variables('sbNamespaceName'), variables('breakQueueName'))]",
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers', variables('cosmosName'), variables('cosmosDbName'), variables('cosmosContainerName'))]",
+        "[resourceId('Microsoft.EventHub/namespaces/providers/roleAssignments', variables('ehNamespaceName'), 'Microsoft.Authorization', guid(resourceId('Microsoft.EventHub/namespaces', variables('ehNamespaceName')), variables('identityId'), variables('eventHubsDataSenderRoleId')))]",
+        "[resourceId('Microsoft.ServiceBus/namespaces/providers/roleAssignments', variables('sbNamespaceName'), 'Microsoft.Authorization', guid(resourceId('Microsoft.ServiceBus/namespaces', variables('sbNamespaceName')), variables('identityId'), variables('serviceBusDataSenderRoleId')))]",
+        "[resourceId('Microsoft.Storage/storageAccounts/providers/roleAssignments', variables('storageName'), 'Microsoft.Authorization', guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageName')), variables('identityId'), variables('storageBlobDataContributorRoleId')))]",
+        "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments', variables('cosmosName'), guid(resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosName')), variables('identityId'), variables('cosmosDataContributorRoleId')))]",
+        "[resourceId('Microsoft.Storage/storageAccounts/providers/roleAssignments', variables('storageNoAuthName'), 'Microsoft.Authorization', guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageNoAuthName')), variables('identityId'), variables('storageBlobDataContributorRoleId')))]",
+        "[resourceId('Microsoft.Storage/storageAccounts/providers/roleAssignments', variables('storageNoNetName'), 'Microsoft.Authorization', guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageNoNetName')), variables('identityId'), variables('storageBlobDataContributorRoleId')))]",
+        "[resourceId('Microsoft.ServiceBus/namespaces/providers/roleAssignments', variables('breakSbNamespaceName'), 'Microsoft.Authorization', guid(resourceId('Microsoft.ServiceBus/namespaces', variables('breakSbNamespaceName')), variables('identityId'), variables('serviceBusDataSenderRoleId')))]"
+      ],
+      "properties": {
+        "routing": {
+          "endpoints": {
+            "eventHubs": [
+              {
+                "name": "eh-endpoint",
+                "endpointUri": "[format('sb://{0}.servicebus.windows.net', variables('ehNamespaceName'))]",
+                "entityPath": "[variables('ehName')]",
+                "authenticationType": "identityBased",
+                "identity": {
+                  "userAssignedIdentity": "[variables('identityId')]"
+                },
+                "resourceGroup": "[resourceGroup().name]",
+                "subscriptionId": "[subscription().subscriptionId]"
+              },
+              {
+                "name": "remote-eh-endpoint",
+                "endpointUri": "[format('sb://{0}.servicebus.windows.net', parameters('remoteEventHubNamespace'))]",
+                "entityPath": "[parameters('remoteEventHubName')]",
+                "authenticationType": "identityBased",
+                "identity": {
+                  "userAssignedIdentity": "[variables('identityId')]"
+                },
+                "resourceGroup": "[parameters('remoteEventHubResourceGroup')]",
+                "subscriptionId": "[parameters('remoteEventHubSubscriptionId')]"
+              }
+            ],
+            "serviceBusQueues": [
+              {
+                "name": "sbqueue-endpoint",
+                "endpointUri": "[format('sb://{0}.servicebus.windows.net', variables('sbNamespaceName'))]",
+                "entityPath": "[variables('sbQueueName')]",
+                "authenticationType": "identityBased",
+                "identity": {
+                  "userAssignedIdentity": "[variables('identityId')]"
+                },
+                "resourceGroup": "[resourceGroup().name]",
+                "subscriptionId": "[subscription().subscriptionId]"
+              },
+              {
+                "name": "sbqueue-missing-ns-endpoint",
+                "endpointUri": "[format('sb://{0}.servicebus.windows.net', variables('breakSbNamespaceName'))]",
+                "entityPath": "[variables('sbQueueName')]",
+                "authenticationType": "identityBased",
+                "identity": {
+                  "userAssignedIdentity": "[variables('identityId')]"
+                },
+                "resourceGroup": "[resourceGroup().name]",
+                "subscriptionId": "[subscription().subscriptionId]"
+              },
+              {
+                "name": "sbqueue-missing-queue-endpoint",
+                "endpointUri": "[format('sb://{0}.servicebus.windows.net', variables('sbNamespaceName'))]",
+                "entityPath": "[variables('breakQueueName')]",
+                "authenticationType": "identityBased",
+                "identity": {
+                  "userAssignedIdentity": "[variables('identityId')]"
+                },
+                "resourceGroup": "[resourceGroup().name]",
+                "subscriptionId": "[subscription().subscriptionId]"
+              }
+            ],
+            "serviceBusTopics": [
+              {
+                "name": "sbtopic-endpoint",
+                "endpointUri": "[format('sb://{0}.servicebus.windows.net', variables('sbNamespaceName'))]",
+                "entityPath": "[variables('sbTopicName')]",
+                "authenticationType": "identityBased",
+                "identity": {
+                  "userAssignedIdentity": "[variables('identityId')]"
+                },
+                "resourceGroup": "[resourceGroup().name]",
+                "subscriptionId": "[subscription().subscriptionId]"
+              }
+            ],
+            "storageContainers": [
+              {
+                "name": "storage-endpoint",
+                "endpointUri": "[format('https://{0}.blob.core.windows.net/', variables('storageName'))]",
+                "containerName": "[variables('storageContainerName')]",
+                "fileNameFormat": "{iothub}/{partition}/{YYYY}/{MM}/{DD}/{HH}/{mm}",
+                "batchFrequencyInSeconds": 60,
+                "maxChunkSizeInBytes": 104857600,
+                "encoding": "JSON",
+                "authenticationType": "identityBased",
+                "identity": {
+                  "userAssignedIdentity": "[variables('identityId')]"
+                },
+                "resourceGroup": "[resourceGroup().name]",
+                "subscriptionId": "[subscription().subscriptionId]"
+              },
+              {
+                "name": "storage-noauth-endpoint",
+                "endpointUri": "[format('https://{0}.blob.core.windows.net/', variables('storageNoAuthName'))]",
+                "containerName": "[variables('storageNoAuthContainerName')]",
+                "fileNameFormat": "{iothub}/{partition}/{YYYY}/{MM}/{DD}/{HH}/{mm}",
+                "batchFrequencyInSeconds": 60,
+                "maxChunkSizeInBytes": 104857600,
+                "encoding": "JSON",
+                "authenticationType": "identityBased",
+                "identity": {
+                  "userAssignedIdentity": "[variables('identityId')]"
+                },
+                "resourceGroup": "[resourceGroup().name]",
+                "subscriptionId": "[subscription().subscriptionId]"
+              },
+              {
+                "name": "storage-nonet-endpoint",
+                "endpointUri": "[format('https://{0}.blob.core.windows.net/', variables('storageNoNetName'))]",
+                "containerName": "[variables('storageNoNetContainerName')]",
+                "fileNameFormat": "{iothub}/{partition}/{YYYY}/{MM}/{DD}/{HH}/{mm}",
+                "batchFrequencyInSeconds": 60,
+                "maxChunkSizeInBytes": 104857600,
+                "encoding": "JSON",
+                "authenticationType": "identityBased",
+                "identity": {
+                  "userAssignedIdentity": "[variables('identityId')]"
+                },
+                "resourceGroup": "[resourceGroup().name]",
+                "subscriptionId": "[subscription().subscriptionId]"
+              }
+            ],
+            "cosmosDBSqlContainers": [
+              {
+                "name": "cosmos-endpoint",
+                "endpointUri": "[format('https://{0}.documents.azure.com:443/', variables('cosmosName'))]",
+                "databaseName": "[variables('cosmosDbName')]",
+                "containerName": "[variables('cosmosContainerName')]",
+                "partitionKeyName": "deviceId",
+                "partitionKeyTemplate": "{deviceid}",
+                "authenticationType": "identityBased",
+                "identity": {
+                  "userAssignedIdentity": "[variables('identityId')]"
+                },
+                "resourceGroup": "[resourceGroup().name]",
+                "subscriptionId": "[subscription().subscriptionId]"
+              }
+            ]
+          },
+          "routes": [
+            {
+              "name": "toEventHub",
+              "source": "DeviceMessages",
+              "condition": "target = 'eventhub' OR target = 'all'",
+              "endpointNames": [ "eh-endpoint" ],
+              "isEnabled": true
+            },
+            {
+              "name": "toRemoteEventHub",
+              "source": "DeviceMessages",
+              "condition": "target = 'remote' OR target = 'all'",
+              "endpointNames": [ "remote-eh-endpoint" ],
+              "isEnabled": true
+            },
+            {
+              "name": "toServiceBusQueue",
+              "source": "DeviceMessages",
+              "condition": "target = 'sbqueue' OR target = 'all'",
+              "endpointNames": [ "sbqueue-endpoint" ],
+              "isEnabled": true
+            },
+            {
+              "name": "toServiceBusTopic",
+              "source": "DeviceMessages",
+              "condition": "target = 'sbtopic' OR target = 'all'",
+              "endpointNames": [ "sbtopic-endpoint" ],
+              "isEnabled": true
+            },
+            {
+              "name": "toStorage",
+              "source": "DeviceMessages",
+              "condition": "target = 'storage' OR target = 'all'",
+              "endpointNames": [ "storage-endpoint" ],
+              "isEnabled": true
+            },
+            {
+              "name": "toCosmos",
+              "source": "DeviceMessages",
+              "condition": "target = 'cosmos' OR target = 'all'",
+              "endpointNames": [ "cosmos-endpoint" ],
+              "isEnabled": true
+            },
+            {
+              "name": "toStorageNoAuth",
+              "source": "DeviceMessages",
+              "condition": "target = 'noauth' OR target = 'all'",
+              "endpointNames": [ "storage-noauth-endpoint" ],
+              "isEnabled": true
+            },
+            {
+              "name": "toStorageNoNet",
+              "source": "DeviceMessages",
+              "condition": "target = 'nonet' OR target = 'all'",
+              "endpointNames": [ "storage-nonet-endpoint" ],
+              "isEnabled": true
+            },
+            {
+              "name": "toMissingResource",
+              "source": "DeviceMessages",
+              "condition": "target = 'missingresource' OR target = 'all'",
+              "endpointNames": [ "sbqueue-missing-ns-endpoint" ],
+              "isEnabled": true
+            },
+            {
+              "name": "toMissingSubResource",
+              "source": "DeviceMessages",
+              "condition": "target = 'missingsubresource' OR target = 'all'",
+              "endpointNames": [ "sbqueue-missing-queue-endpoint" ],
+              "isEnabled": true
+            }
+          ],
+          "fallbackRoute": {
+            "name": "$fallback",
+            "source": "DeviceMessages",
+            "condition": "false",
+            "endpointNames": [ "events" ],
+            "isEnabled": false
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "iotHubName": {
+      "type": "string",
+      "value": "[variables('iotHubName')]"
+    },
+    "resourceGroup": {
+      "type": "string",
+      "value": "[resourceGroup().name]"
+    },
+    "subscriptionId": {
+      "type": "string",
+      "value": "[subscription().subscriptionId]"
+    },
+    "managedIdentityName": {
+      "type": "string",
+      "value": "[variables('identityName')]"
+    },
+    "managedIdentityPrincipalId": {
+      "type": "string",
+      "value": "[reference(variables('identityId'), '2023-01-31').principalId]"
+    },
+    "eventHubsNamespace": {
+      "type": "string",
+      "value": "[variables('ehNamespaceName')]"
+    },
+    "serviceBusNamespace": {
+      "type": "string",
+      "value": "[variables('sbNamespaceName')]"
+    },
+    "storageAccount": {
+      "type": "string",
+      "value": "[variables('storageName')]"
+    },
+    "storageNoAuthAccount": {
+      "type": "string",
+      "value": "[variables('storageNoAuthName')]"
+    },
+    "storageNoNetAccount": {
+      "type": "string",
+      "value": "[variables('storageNoNetName')]"
+    },
+    "breakServiceBusNamespace": {
+      "type": "string",
+      "value": "[variables('breakSbNamespaceName')]"
+    },
+    "breakQueue": {
+      "type": "string",
+      "value": "[variables('breakQueueName')]"
+    },
+    "cosmosAccount": {
+      "type": "string",
+      "value": "[variables('cosmosName')]"
+    }
+  }
+}

@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>IoT Hub Routing Diagnostics Demo</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <div>
+        <h1>IoT Hub routing diagnostics</h1>
+      </div>
+    </div>
+    <div class="connection-chip" id="connection-chip">
+      <span class="status-dot"></span>
+      <span id="connection-label">Checking local server…</span>
+    </div>
+  </header>
+
+  <nav class="page-nav" aria-label="Demo pages">
+    <button class="nav-item active" data-page="contracts">
+      <span>01</span>
+      Command contracts
+    </button>
+    <button class="nav-item" data-page="architecture">
+      <span>02</span>
+      Azure data flow
+    </button>
+    <button class="nav-item" data-page="environment">
+      <span>03</span>
+      Demo environment
+    </button>
+  </nav>
+
+  <main>
+    <section class="page active" id="page-contracts" aria-labelledby="contracts-title">
+      <div class="section-heading">
+        <h2 id="contracts-title">Command contracts</h2>
+        <span>Click a row to inspect input and output.</span>
+      </div>
+
+      <div class="contracts-layout">
+        <div class="table-card">
+          <table class="command-table">
+            <thead>
+              <tr>
+                <th>Command</th>
+                <th>Purpose</th>
+                <th>Depth</th>
+                <th><span class="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody id="command-table-body"></tbody>
+          </table>
+        </div>
+
+        <aside class="contract-detail" id="contract-detail" aria-live="polite">
+          <div class="detail-placeholder">
+            <span class="placeholder-icon">↳</span>
+            <h3>Select a command</h3>
+            <p>Its input contract, output shape, and runnable example will appear here.</p>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="page" id="page-architecture" aria-labelledby="architecture-title">
+      <div class="section-heading">
+        <h2 id="architecture-title">Azure data flow</h2>
+        <span>Hover a command to compare evidence consumption.</span>
+      </div>
+
+      <div class="architecture-toolbar" id="architecture-toolbar"></div>
+
+      <div class="architecture-card">
+        <div class="consumption-summary" id="consumption-summary">
+          <span class="summary-label">Evidence footprint</span>
+          <strong>Select a command</strong>
+          <small>Highlighted cards are data sources consumed by that command.</small>
+        </div>
+
+        <div class="call-map" id="call-map">
+          <svg class="call-lines" role="img" aria-label="Azure API call diagram"></svg>
+          <span class="evidence-group-label hub-evidence-label">Hub-side evidence</span>
+          <span class="evidence-group-label destination-evidence-label">Destination deep dive</span>
+
+          <div class="diagram-node tool-node" data-node="tool">
+            <span class="node-kicker">Local orchestration</span>
+            <strong>MCP · Routing command</strong>
+            <small>Loads, correlates, and projects endpoint evidence.</small>
+          </div>
+          <div class="diagram-node" data-call-node="hub-config">
+            <span class="node-kicker">ARM · once per request</span>
+            <strong>IoT Hub · Configuration</strong>
+            <small>Hub resource, routes, endpoint definitions, endpoint IDs.</small>
+          </div>
+          <div class="diagram-node" data-call-node="endpoint-health">
+            <span class="node-kicker">IoT Hub REST · paged</span>
+            <strong>IoT Hub · Endpoint health</strong>
+            <small>Status, send attempts, last success, and last error.</small>
+          </div>
+          <div class="diagram-node" data-call-node="routing-deliveries">
+            <span class="node-kicker">Azure Monitor · hub-wide</span>
+            <strong>IoT Hub · Routing deliveries</strong>
+            <small>RoutingDeliveries split by EndpointName and Result.</small>
+          </div>
+          <div class="diagram-node" data-call-node="routing-latency">
+            <span class="node-kicker">Azure Monitor · hub-wide</span>
+            <strong>IoT Hub · Delivery latency</strong>
+            <small>RoutingDeliveryLatency split by EndpointName and interval.</small>
+          </div>
+          <div class="diagram-node target-node" data-call-node="target-existence">
+            <span class="node-kicker">ARM · per endpoint</span>
+            <strong>Destination · Resource existence</strong>
+            <small>Parent resource and routed queue, topic, event hub, or container.</small>
+          </div>
+          <div class="diagram-node metric-node" data-call-node="eventhub-metrics">
+            <span class="node-kicker">Azure Monitor · per namespace</span>
+            <strong>Event Hubs · Destination metrics</strong>
+            <small>SuccessfulRequests · ServerErrors · UserErrors · ThrottledRequests · QuotaExceededErrors</small>
+          </div>
+          <div class="diagram-node metric-node" data-call-node="servicebus-metrics">
+            <span class="node-kicker">Azure Monitor · per namespace</span>
+            <strong>Service Bus · Destination metrics</strong>
+            <small>IncomingMessages · IncomingRequests · ServerErrors · UserErrors · ThrottledRequests</small>
+          </div>
+          <div class="diagram-node metric-node" data-call-node="storage-metrics">
+            <span class="node-kicker">Azure Monitor · per account</span>
+            <strong>Storage · Destination metrics</strong>
+            <small>Transactions split by ResponseType</small>
+          </div>
+          <div class="diagram-node metric-node" data-call-node="cosmos-metrics">
+            <span class="node-kicker">Azure Monitor · per account</span>
+            <strong>Cosmos DB · Destination metrics</strong>
+            <small>TotalRequests by StatusCode · NormalizedRUConsumption</small>
+          </div>
+          <div class="diagram-node target-node" data-call-node="storage-config">
+            <span class="node-kicker">ARM · per Storage account</span>
+            <strong>Storage · Network configuration</strong>
+            <small>PublicNetworkAccess, network default action, and bypass.</small>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <section class="page" id="page-environment" aria-labelledby="environment-title">
+      <div class="section-heading">
+        <h2 id="environment-title">Demo environment</h2>
+        <button class="vscode-launch" id="launch-vscode-agent">Open VS Code Agent</button>
+      </div>
+
+      <div class="environment-actions">
+        <button class="environment-action provision" data-action="provision" data-confirmation="PROVISION">
+          <strong>Provision resources</strong>
+          <small>Deploy healthy baseline from azuredeploy.json</small>
+        </button>
+        <button class="environment-action destructive" data-action="break" data-confirmation="BREAK">
+          <strong>Break test resources</strong>
+          <small>Remove role, network, namespace, and queue</small>
+        </button>
+        <button class="environment-action" data-action="standard" data-confirmation="SEND">
+          <strong>Send regular traffic</strong>
+          <small>Standard mode · all endpoints</small>
+        </button>
+        <button class="environment-action warning" data-action="burst" data-confirmation="THROTTLE">
+          <strong>Send throttle traffic</strong>
+          <small>Burst mode · all endpoints</small>
+        </button>
+      </div>
+
+      <div class="action-status" id="action-status" hidden>
+        <div class="action-status-bar">
+          <strong id="action-status-title">Demo action</strong>
+          <span id="action-status-state"></span>
+          <button id="toggle-action-output">Show output</button>
+        </div>
+        <pre id="action-output" hidden></pre>
+      </div>
+
+      <div class="environment-layout">
+        <div class="environment-map">
+          <div class="environment-header">
+            <span>DEPLOYED BASELINE</span>
+            <strong>S1 IoT Hub · 1 unit · 10 custom endpoints</strong>
+          </div>
+
+          <div class="environment-flow">
+            <div class="environment-source">
+              <span>Device</span>
+              <strong>throttle-test-device</strong>
+              <small>application property: target</small>
+            </div>
+            <div class="environment-arrow">→</div>
+            <div class="environment-hub">
+              <span>IoT Hub</span>
+              <strong>Route query</strong>
+              <small>target = '&lt;selector&gt;' OR target = 'all'</small>
+            </div>
+            <div class="environment-arrow">→</div>
+            <div class="endpoint-grid" id="endpoint-grid"></div>
+          </div>
+        </div>
+
+        <aside class="scenario-panel">
+          <div class="scenario-title">
+            <span>INTERACTIVE TEST SCENARIOS</span>
+            <small>Hover to preview expected impact</small>
+          </div>
+          <div class="scenario-list" id="scenario-list"></div>
+          <div class="scenario-detail" id="scenario-detail">
+            <strong>Choose a scenario</strong>
+            <p>Related endpoints and expected MCP signals will highlight here.</p>
+          </div>
+        </aside>
+      </div>
+
+      <div class="environment-legend">
+        <span><i class="state-dot healthy"></i> provisioned healthy</span>
+        <span><i class="state-dot warning"></i> expected degraded / throttled</span>
+        <span><i class="state-dot unavailable"></i> expected unavailable</span>
+        <span class="agent-note" id="agent-launch-status">VS Code agent uses only <code>local-mcp/*</code>.</span>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>VS Code custom agent · local Azure MCP only</span>
+    <span id="footer-target"></span>
+  </footer>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
