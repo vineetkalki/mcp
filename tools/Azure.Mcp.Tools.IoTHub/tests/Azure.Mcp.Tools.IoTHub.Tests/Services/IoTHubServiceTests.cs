@@ -3,8 +3,7 @@
 
 using System.Net;
 using Azure.Core;
-using Azure.Mcp.Core.Services.Azure.Subscription;
-using Azure.Mcp.Core.Services.Azure.Tenant;
+using Azure.Mcp.Core.Services.Azure;
 using Azure.Mcp.Tools.IoTHub.Models;
 using Azure.Mcp.Tools.IoTHub.Services;
 using Azure.ResourceManager;
@@ -241,25 +240,22 @@ public class IoTHubServiceTests
 
     private static IoTHubService CreateService(HttpMessageHandler handler)
     {
-        var subscriptionService = Substitute.For<ISubscriptionService>();
-        var tenantService = Substitute.For<ITenantService>();
-        var httpClientFactory = Substitute.For<IHttpClientFactory>();
+        var azureService = Substitute.For<IAzureService>();
         var logger = Substitute.For<ILogger<IoTHubService>>();
 
         var cloudConfiguration = Substitute.For<IAzureCloudConfiguration>();
         cloudConfiguration.ArmEnvironment.Returns(ArmEnvironment.AzurePublicCloud);
-        tenantService.CloudConfiguration.Returns(cloudConfiguration);
+        azureService.CloudConfiguration.Returns(cloudConfiguration);
 
         var credential = Substitute.For<TokenCredential>();
         credential.GetTokenAsync(Arg.Any<TokenRequestContext>(), Arg.Any<CancellationToken>())
             .Returns(new AccessToken("fake-token", DateTimeOffset.UtcNow.AddHours(1)));
-        tenantService.GetTokenCredentialAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        azureService.GetTokenCredentialAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(credential));
 
-        httpClientFactory.CreateClient(Arg.Any<string>())
-            .Returns(_ => new HttpClient(handler));
+        azureService.GetClient(Arg.Any<string?>()).Returns(_ => new HttpClient(handler));
 
-        return new IoTHubService(subscriptionService, tenantService, httpClientFactory, logger);
+        return new IoTHubService(azureService, logger);
     }
 
     private static RoutingEndpointDetails CreateEndpoint(

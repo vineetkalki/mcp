@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using Microsoft.Mcp.Tests;
+using Microsoft.Mcp.Tests.Attributes;
 using Microsoft.Mcp.Tests.Client;
 using Microsoft.Mcp.Tests.Client.Helpers;
 using Xunit;
@@ -66,6 +67,7 @@ public class IoTHubCommandTests(
     }
 
     [Fact]
+    [LiveTestOnly]
     public async Task Should_get_iot_hub_routing_endpoint_health()
     {
         var result = await CallToolAsync("iothub_routing_endpoint-health", new()
@@ -87,6 +89,7 @@ public class IoTHubCommandTests(
     }
 
     [Fact]
+    [LiveTestOnly]
     public async Task Should_get_iot_hub_routing_latency()
     {
         var result = await CallToolAsync("iothub_routing_endpoint-latency", new()
@@ -109,6 +112,7 @@ public class IoTHubCommandTests(
     }
 
     [Fact]
+    [LiveTestOnly]
     public async Task Should_diagnose_iot_hub_routing_endpoints()
     {
         var result = await CallToolAsync("iothub_routing_endpoint-diagnose", new()

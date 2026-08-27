@@ -90,8 +90,7 @@ The IoT Hub tool lives at `tools/Azure.Mcp.Tools.IoTHub`:
 | `src/Services/` | `IIoTHubService` + `IoTHubService` (ARM / Azure Monitor calls) |
 | `src/Models/` | Response models registered in `IoTHubJsonContext` |
 | `src/IoTHubSetup.cs` | Registers commands + the command-group tree with the server |
-| `tests/Azure.Mcp.Tools.IoTHub.UnitTests/` | Unit tests (no Azure required) |
-| `tests/Azure.Mcp.Tools.IoTHub.LiveTests/` | Live tests (real Azure resources) |
+| `tests/Azure.Mcp.Tools.IoTHub.Tests/` | Unit and recorded live tests |
 | `tests/test-resources.bicep` | Live-test infrastructure |
 
 </details>
@@ -213,14 +212,14 @@ Get-CimInstance Win32_Process -Filter "Name='dotnet.exe'" |
 
 ```powershell
 # Unit tests (no Azure), the everyday inner loop
-dotnet test tools/Azure.Mcp.Tools.IoTHub/tests/Azure.Mcp.Tools.IoTHub.UnitTests
+dotnet test --project tools/Azure.Mcp.Tools.IoTHub/tests/Azure.Mcp.Tools.IoTHub.Tests/Azure.Mcp.Tools.IoTHub.Tests.csproj
 
 # Or via the repo script
 ./eng/scripts/Test-Code.ps1 -Paths IoTHub
 
 # Run a single test class
-dotnet test tools/Azure.Mcp.Tools.IoTHub/tests/Azure.Mcp.Tools.IoTHub.UnitTests `
-  --filter "FullyQualifiedName~RoutingEndpointHealthGetCommandTests"
+dotnet test --project tools/Azure.Mcp.Tools.IoTHub/tests/Azure.Mcp.Tools.IoTHub.Tests/Azure.Mcp.Tools.IoTHub.Tests.csproj `
+  -- --filter-class "*RoutingEndpointHealthGetCommandTests"
 ```
 
 **Live tests** exercise commands against real Azure resources and must be recorded for playback (see

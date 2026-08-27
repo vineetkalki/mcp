@@ -22,11 +22,9 @@ namespace Azure.Mcp.Tools.IoTHub.Services;
 
 public class IoTHubService(
     IAzureService azureService,
-    IHttpClientFactory httpClientFactory,
     ILogger<IoTHubService> logger)
     : BaseAzureService(azureService), IIoTHubService
 {
-    private readonly IHttpClientFactory _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
     private readonly ILogger<IoTHubService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     public async Task<IoTHubDescription> GetIoTHub(
@@ -1280,7 +1278,7 @@ public class IoTHubService(
             url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Token);
 
-        using var response = await _httpClientFactory.CreateClient()
+        using var response = await AzureService.GetClient()
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         return new(response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken));
     }
