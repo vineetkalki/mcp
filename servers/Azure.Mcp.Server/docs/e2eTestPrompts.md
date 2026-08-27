@@ -1,6 +1,6 @@
 # Azure MCP End-to-End Test Prompts
 
-Contains prompts used for end-to-end testing to ensure each tool is invoked properly by MCP clients. The tables are organized by Azure MCP Server areas in alphabetical order, with Tool Names sorted alphabetically within each table.
+This file contains prompts used for end-to-end testing to ensure each tool is invoked properly by MCP clients. The tables are organized by Azure MCP Server areas in alphabetical order, with Tool Names sorted alphabetically within each table.
 
 The `Interaction` column describes whether a prompt can invoke its tool immediately:
 

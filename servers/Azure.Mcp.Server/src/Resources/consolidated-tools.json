@@ -2978,8 +2978,8 @@
       ]
     },
     {
-        "name": "get_azure_iot_hub",
-        "description": "Get details about an Azure IoT Hub.",
+      "name": "get_azure_iot_hub",
+      "description": "Get details about an Azure IoT Hub.",
       "toolMetadata": {
         "destructive": {
           "value": false,
