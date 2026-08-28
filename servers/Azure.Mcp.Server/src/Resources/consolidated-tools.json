@@ -3009,8 +3009,7 @@
       "mappedToolList": [
         "iothub_hub_get",
         "iothub_routing_endpoint-health",
-        "iothub_routing_endpoint-latency",
-        "iothub_routing_endpoint-diagnose"
+        "iothub_routing_endpoint-diagnostics"
       ]
     },
     {

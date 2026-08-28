@@ -12,7 +12,7 @@ using Microsoft.Mcp.Core.Commands;
 
 namespace Azure.Mcp.Tools.IoTHub;
 
-public class IoTHubSetup : IAreaSetup
+public class IoTHubSetup() : IAreaSetup
 {
     public string Name => "iothub";
 
@@ -31,8 +31,7 @@ public class IoTHubSetup : IAreaSetup
         services.AddSingleton<IoTHubDeviceTwinGetCommand>();
         services.AddSingleton<IoTHubQueryRunCommand>();
         services.AddSingleton<RoutingEndpointHealthGetCommand>();
-        services.AddSingleton<RoutingLatencyGetCommand>();
-        services.AddSingleton<RoutingDiagnoseCommand>();
+        services.AddSingleton<RoutingEndpointDiagnosticsCommand>();
     }
 
     public CommandGroup RegisterCommands(IServiceProvider serviceProvider)
@@ -63,8 +62,7 @@ public class IoTHubSetup : IAreaSetup
         iothub.AddSubGroup(routing);
 
         routing.AddCommand<RoutingEndpointHealthGetCommand>(serviceProvider);
-        routing.AddCommand<RoutingLatencyGetCommand>(serviceProvider);
-        routing.AddCommand<RoutingDiagnoseCommand>(serviceProvider);
+        routing.AddCommand<RoutingEndpointDiagnosticsCommand>(serviceProvider);
 
         return iothub;
     }

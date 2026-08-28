@@ -79,20 +79,21 @@ public class IoTHubCommandTests(
         });
 
         Assert.NotNull(result);
-        var endpoints = result.Value.AssertProperty("endpoints");
-        Assert.Equal(JsonValueKind.Array, endpoints.ValueKind);
-        foreach (var endpoint in endpoints.EnumerateArray())
+        var value = result.Value.AssertProperty("value");
+        Assert.Equal(JsonValueKind.Array, value.ValueKind);
+        foreach (var endpoint in value.EnumerateArray())
         {
-            Assert.Equal(JsonValueKind.String, endpoint.GetProperty("name").ValueKind);
-            Assert.Equal(JsonValueKind.String, endpoint.GetProperty("endpointHealthStatus").ValueKind);
+            Assert.Equal(JsonValueKind.String, endpoint.GetProperty("endpointId").ValueKind);
+            Assert.Equal(JsonValueKind.String, endpoint.GetProperty("endpointName").ValueKind);
+            Assert.Equal(JsonValueKind.String, endpoint.GetProperty("healthStatus").ValueKind);
         }
     }
 
     [Fact]
     [LiveTestOnly]
-    public async Task Should_get_iot_hub_routing_latency()
+    public async Task Should_get_iot_hub_routing_endpoint_diagnostics()
     {
-        var result = await CallToolAsync("iothub_routing_endpoint-latency", new()
+        var result = await CallToolAsync("iothub_routing_endpoint-diagnostics", new()
         {
             { "hub-name", Settings.ResourceBaseName },
             { "resource-group", Settings.ResourceGroupName },
@@ -101,36 +102,17 @@ public class IoTHubCommandTests(
         });
 
         Assert.NotNull(result);
+        var observationWindow = result.Value.AssertProperty("observationWindow");
+        Assert.Equal(JsonValueKind.Object, observationWindow.ValueKind);
         var endpoints = result.Value.AssertProperty("endpoints");
         Assert.Equal(JsonValueKind.Array, endpoints.ValueKind);
         foreach (var endpoint in endpoints.EnumerateArray())
         {
             Assert.Equal(JsonValueKind.String, endpoint.GetProperty("name").ValueKind);
             Assert.Equal(JsonValueKind.String, endpoint.GetProperty("endpointType").ValueKind);
-            Assert.Equal(JsonValueKind.String, endpoint.GetProperty("endpointHealthStatus").ValueKind);
-        }
-    }
-
-    [Fact]
-    [LiveTestOnly]
-    public async Task Should_diagnose_iot_hub_routing_endpoints()
-    {
-        var result = await CallToolAsync("iothub_routing_endpoint-diagnose", new()
-        {
-            { "hub-name", Settings.ResourceBaseName },
-            { "resource-group", Settings.ResourceGroupName },
-            { "subscription", Settings.SubscriptionId },
-            { "tenant", Settings.TenantId }
-        });
-
-        Assert.NotNull(result);
-        var endpoints = result.Value.AssertProperty("endpoints");
-        Assert.Equal(JsonValueKind.Array, endpoints.ValueKind);
-        foreach (var endpoint in endpoints.EnumerateArray())
-        {
-            var health = endpoint.AssertProperty("health");
-            Assert.Equal(JsonValueKind.Object, health.ValueKind);
-            Assert.Equal(JsonValueKind.String, health.GetProperty("endpointHealthStatus").ValueKind);
+            Assert.Equal(JsonValueKind.Object, endpoint.GetProperty("hubEmitted").ValueKind);
+            Assert.Equal(JsonValueKind.Object, endpoint.GetProperty("targetEmitted").ValueKind);
+            Assert.False(endpoint.TryGetProperty("health", out _));
         }
     }
 }

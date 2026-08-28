@@ -3226,38 +3226,26 @@ azmcp iothub query run --subscription <subscription> \
                        [--logical-operator <operator>] \
                        [--max-count <max-count>]
 
-# Get health for IoT Hub message-routing endpoints
+# Get the current IoT Hub-reported health snapshot for message-routing endpoints
 # ❌ Destructive | ✅ Idempotent | ❌ OpenWorld | ✅ ReadOnly | ❌ Secret | ❌ LocalRequired
 azmcp iothub routing endpoint-health --subscription <subscription> \
                                      --resource-group <resource-group> \
                                      --hub-name <iot-hub-name> \
-                                     [--endpoint-name <endpoint-name>] \
-                                     [--lookback <iso8601-duration-or-hours>] \
-                                     [--start-time <iso8601-datetime> --end-time <iso8601-datetime>]
+                                     [--endpoint-name <endpoint-name>]
 
-# Get routing latency, threshold, and active hourly trend per endpoint
+# Get factual hub and target metric evidence for IoT Hub message-routing endpoints
 # ❌ Destructive | ✅ Idempotent | ❌ OpenWorld | ✅ ReadOnly | ❌ Secret | ❌ LocalRequired
-azmcp iothub routing endpoint-latency --subscription <subscription> \
-                                      --resource-group <resource-group> \
-                                      --hub-name <iot-hub-name> \
-                                      [--endpoint-name <endpoint-name>] \
-                                      [--lookback <iso8601-duration-or-hours>] \
-                                      [--start-time <iso8601-datetime> --end-time <iso8601-datetime>] \
-                                      [--interval <iso8601-duration>]
-
-# Diagnose routing problems with fault categories and user-friendly next steps
-# ❌ Destructive | ✅ Idempotent | ❌ OpenWorld | ✅ ReadOnly | ❌ Secret | ❌ LocalRequired
-azmcp iothub routing endpoint-diagnose --subscription <subscription> \
-                                       --resource-group <resource-group> \
-                                       --hub-name <iot-hub-name> \
-                                       [--endpoint-name <endpoint-name>] \
-                                       [--lookback <iso8601-duration-or-hours>] \
-                                       [--start-time <iso8601-datetime> --end-time <iso8601-datetime>] \
-                                       [--interval <iso8601-duration>]
+azmcp iothub routing endpoint-diagnostics --subscription <subscription> \
+                                          --resource-group <resource-group> \
+                                          --hub-name <iot-hub-name> \
+                                          [--endpoint-name <endpoint-name>] \
+                                          [--start-time <iso8601-datetime> --end-time <iso8601-datetime>] \
+                                          [--interval <iso8601-duration>]
 ```
 
-`--start-time` and `--end-time` must be supplied together. When supplied, they take precedence over
-`--lookback`. The maximum relative or absolute observation window is 30 days.
+Diagnostics defaults to the previous 24 hours with `PT1H` buckets. `--start-time` and `--end-time` must
+be supplied together. The maximum observation window is 30 days, and the selected window and interval
+cannot exceed 720 buckets.
 
 ### Azure IoT Operations
 

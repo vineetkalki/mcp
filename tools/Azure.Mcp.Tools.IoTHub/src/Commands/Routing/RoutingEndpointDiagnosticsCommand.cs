@@ -15,14 +15,17 @@ using Microsoft.Mcp.Core.Models.Command;
 namespace Azure.Mcp.Tools.IoTHub.Commands.Routing;
 
 [CommandMetadata(
-    Id = "3f2b9a4e-7c1d-4e8a-9b6f-2a4d8c1e5f73",
-    Name = "endpoint-health",
-    Title = "Get IoT Hub Routing Endpoint Health",
+    Id = "c2a9f4e1-7b6d-4f80-9a35-1e8c6d2b4f79",
+    Name = "endpoint-diagnostics",
+    Title = "Get IoT Hub Routing Endpoint Diagnostics",
     Description = """
-        Get the current IoT Hub-reported health snapshot for one or all message-routing custom endpoints.
-        Returns the routingEndpointsHealth fields endpointId, endpointName, healthStatus, lastKnownError,
-        lastKnownErrorTime, lastSuccessfulSendAttemptTime, and lastSendAttemptTime without applying a time
-        window, querying metrics, or inferring health. Requires hub-name and resource-group.
+        Get factual time-windowed diagnostic evidence for one or all IoT Hub message-routing custom
+        endpoints. Returns per-endpoint IoT Hub RoutingDeliveries and RoutingDeliveryLatency buckets,
+        current target existence, and native target-resource Azure Monitor metrics for Event Hubs,
+        Service Bus, Blob Storage, and Cosmos DB. The tool does not infer health, confidence, or likely
+        cause. Use paired --start-time and --end-time for an absolute UTC range; if omitted, the previous
+        24 hours are used. --interval defaults to PT1H. At most 720 buckets are allowed.
+        Requires hub-name and resource-group.
         """,
     Destructive = false,
     Idempotent = true,
@@ -30,46 +33,56 @@ namespace Azure.Mcp.Tools.IoTHub.Commands.Routing;
     ReadOnly = true,
     Secret = false,
     LocalRequired = false)]
-public sealed class RoutingEndpointHealthGetCommand(
-    ILogger<RoutingEndpointHealthGetCommand> logger,
+public sealed class RoutingEndpointDiagnosticsCommand(
+    ILogger<RoutingEndpointDiagnosticsCommand> logger,
     IIoTHubService service,
     ISubscriptionResolver subscriptionResolver)
-    : SubscriptionCommand<RoutingEndpointHealthGetOptions, RoutingEndpointHealthGetCommand.RoutingEndpointHealthGetCommandResult>(subscriptionResolver)
+    : SubscriptionCommand<RoutingEndpointDiagnosticsOptions, RoutingEndpointDiagnostics>(subscriptionResolver)
 {
-    private readonly ILogger<RoutingEndpointHealthGetCommand> _logger = logger;
+    private readonly ILogger<RoutingEndpointDiagnosticsCommand> _logger = logger;
     private readonly IIoTHubService _service = service;
 
-    public override void ValidateOptions(RoutingEndpointHealthGetOptions options, ValidationResult validationResult)
+    public override void ValidateOptions(
+        RoutingEndpointDiagnosticsOptions options,
+        ValidationResult validationResult)
     {
         base.ValidateOptions(options, validationResult);
         IoTHubValidation.ValidateHubName(options.HubName, validationResult);
+        IoTHubValidation.ValidateDiagnosticsWindow(
+            options.StartTime,
+            options.EndTime,
+            options.Interval,
+            validationResult);
     }
 
     public override async Task<CommandResponse> ExecuteAsync(
         CommandContext context,
-        RoutingEndpointHealthGetOptions options,
+        RoutingEndpointDiagnosticsOptions options,
         CancellationToken cancellationToken)
     {
         try
         {
-            var endpoints = await _service.GetRoutingEndpointHealth(
+            var result = await _service.GetRoutingEndpointDiagnostics(
                 options.HubName,
                 options.ResourceGroup,
                 options.Subscription!,
                 options.EndpointName,
+                options.StartTime,
+                options.EndTime,
+                options.Interval,
                 options.Tenant,
                 options.RetryPolicy,
-                cancellationToken)
-                ?? [];
+                cancellationToken);
 
             context.Response.Results = ResponseResult.Create(
-                new RoutingEndpointHealthGetCommandResult(endpoints),
-                IoTHubJsonContext.Default.RoutingEndpointHealthGetCommandResult);
+                result,
+                IoTHubJsonContext.Default.RoutingEndpointDiagnostics);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex,
-                "Error getting routing endpoint health for IoT Hub '{HubName}' in resource group '{ResourceGroup}' and subscription '{Subscription}'.",
+            _logger.LogError(
+                ex,
+                "Error getting routing endpoint diagnostics for IoT Hub '{HubName}' in resource group '{ResourceGroup}' and subscription '{Subscription}'.",
                 options.HubName,
                 options.ResourceGroup,
                 options.Subscription);
@@ -85,12 +98,9 @@ public sealed class RoutingEndpointHealthGetCommand(
         RequestFailedException requestFailed when requestFailed.Status == (int)HttpStatusCode.NotFound =>
             "The IoT Hub was not found. Verify the hub name, resource group, and subscription.",
         RequestFailedException requestFailed when requestFailed.Status == (int)HttpStatusCode.Forbidden =>
-            "Authorization failed reading IoT Hub routing endpoint health. Assign Reader on the IoT Hub or a containing scope.",
+            "Authorization failed reading IoT Hub routing diagnostics. Assign Reader on the IoT Hub or a containing scope.",
         RequestFailedException =>
-            "IoT Hub routing endpoint health could not be read.",
+            "IoT Hub routing diagnostics could not be read.",
         _ => base.GetErrorMessage(ex)
     };
-
-    public record RoutingEndpointHealthGetCommandResult(
-        List<RoutingEndpointHealthSnapshot> Value);
 }

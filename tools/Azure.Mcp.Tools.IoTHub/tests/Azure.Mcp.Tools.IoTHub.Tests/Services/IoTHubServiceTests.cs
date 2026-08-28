@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 using System.Net;
+using System.Xml;
 using Azure.Core;
 using Azure.Mcp.Core.Services.Azure;
-using Azure.Mcp.Tools.IoTHub.Models;
+using Azure.Mcp.Tools.IoTHub.Commands;
 using Azure.Mcp.Tools.IoTHub.Services;
 using Azure.ResourceManager;
 using Microsoft.Extensions.Logging;
@@ -39,144 +40,108 @@ public class IoTHubServiceTests
             tenant: null,
             TestContext.Current.CancellationToken);
 
-        Assert.Equal(2, result.Count);
-        Assert.Equal("healthy", result["id1"].HealthStatus);
-        Assert.Equal("unhealthy", result["id2"].HealthStatus);
+        Assert.Collection(
+            result,
+            item =>
+            {
+                Assert.Equal("id1", item.EndpointId);
+                Assert.Equal("healthy", item.HealthStatus);
+            },
+            item =>
+            {
+                Assert.Equal("id2", item.EndpointId);
+                Assert.Equal("unhealthy", item.HealthStatus);
+            });
         Assert.Equal(2, handler.RequestUris.Count);
         Assert.Equal(nextLink, handler.RequestUris[1]?.ToString());
     }
 
     [Fact]
-    public void SummarizeLatencyTrend_IgnoresInactiveZeroBuckets()
+    public void ResolveDiagnosticsWindow_DefaultsToPreviousTwentyFourHours()
     {
-        var start = new DateTimeOffset(2026, 8, 24, 19, 0, 0, TimeSpan.Zero);
-        var points = Enumerable.Range(0, 6)
-            .Select(index => new LatencyTrendPoint(start.AddHours(index), index == 5 ? 111_165 : 0));
+        var currentTime = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
 
-        var (average, peak, trend) = IoTHubService.SummarizeLatencyTrend(points);
+        var result = IoTHubValidation.ResolveDiagnosticsWindow(
+            null,
+            null,
+            null,
+            currentTime);
 
-        Assert.Equal(111_165, average);
-        Assert.Equal(111_165, peak);
-        var activePoint = Assert.Single(trend);
-        Assert.Equal(start.AddHours(5), activePoint.Timestamp);
+        Assert.Equal(currentTime.AddHours(-24), result.StartTime);
+        Assert.Equal(currentTime, result.EndTime);
+        Assert.Equal(TimeSpan.FromHours(1), result.Interval);
     }
 
     [Theory]
-    [InlineData("EventHub", null, 300_000)]
-    [InlineData("StorageContainer", 60, 300_000)]
-    [InlineData("StorageContainer", 600, 1_200_000)]
-    public void GetLatencyThresholdMilliseconds_UsesStorageBatchFrequency(
-        string endpointType,
-        int? batchFrequencyInSeconds,
-        double expected)
-    {
-        var endpoint = CreateEndpoint(endpointType, batchFrequencyInSeconds);
-
-        var threshold = IoTHubService.GetLatencyThresholdMilliseconds(endpoint);
-
-        Assert.Equal(expected, threshold);
-    }
-
-    [Theory]
-    [InlineData(
-        """{"properties":{"publicNetworkAccess":"Enabled","networkAcls":{"defaultAction":"Allow","bypass":"AzureServices"}}}""",
-        false)]
-    [InlineData(
-        """{"properties":{"publicNetworkAccess":"Disabled","networkAcls":{"defaultAction":"Allow","bypass":"AzureServices"}}}""",
-        true)]
-    [InlineData(
-        """{"properties":{"publicNetworkAccess":"Enabled","networkAcls":{"defaultAction":"Deny","bypass":"None"}}}""",
-        true)]
-    [InlineData(
-        """{"properties":{"publicNetworkAccess":"Enabled","networkAcls":{"defaultAction":"Deny","bypass":"Logging, AzureServices"}}}""",
-        false)]
-    public void ParseStorageConfiguration_IdentifiesNetworkWarnings(
-        string content,
-        bool expectsWarning)
-    {
-        var configuration = IoTHubService.ParseStorageConfiguration(content);
-
-        Assert.NotNull(configuration);
-        Assert.Equal(expectsWarning, configuration.Warnings?.Count > 0);
-    }
-
-    [Fact]
-    public void ObservationWindow_MissingTimestamp_IsNotInWindow()
-    {
-        var endTime = DateTimeOffset.UtcNow;
-        var window = new IoTHubService.ObservationWindow(endTime.AddHours(-6), endTime);
-
-        Assert.False(window.Contains(null));
-        Assert.False(IoTHubService.HasErrorInWindow("Unauthorized", null, window));
-    }
-
-    [Fact]
-    public void ObservationWindow_ContainsOnlyTimestampsWithinBounds()
+    [InlineData(12, "PT1M")]
+    [InlineData(24, "PT5M")]
+    [InlineData(720, "PT1H")]
+    public void ResolveDiagnosticsWindow_AcceptsAtMostSevenHundredTwentyBuckets(
+        int durationHours,
+        string interval)
     {
         var startTime = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
-        var endTime = startTime.AddHours(6);
-        var window = new IoTHubService.ObservationWindow(startTime, endTime);
 
-        Assert.True(window.Contains(startTime));
-        Assert.True(window.Contains(endTime));
-        Assert.True(IoTHubService.HasErrorInWindow("Unauthorized", startTime.AddHours(1), window));
-        Assert.False(window.Contains(startTime.AddTicks(-1)));
-        Assert.False(window.Contains(endTime.AddTicks(1)));
+        var result = IoTHubValidation.ResolveDiagnosticsWindow(
+            startTime,
+            startTime.AddHours(durationHours),
+            interval);
+
+        Assert.Equal(XmlConvert.ToTimeSpan(interval), result.Interval);
     }
 
     [Fact]
-    public void ResolveObservationWindow_AbsoluteRangeOverridesLookback()
+    public void ResolveDiagnosticsWindow_RejectsMoreThanSevenHundredTwentyBuckets()
     {
-        var startTime = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.FromHours(-7));
-        var endTime = startTime.AddDays(7);
+        var currentTime = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
 
-        var window = IoTHubService.ResolveObservationWindow("invalid", startTime, endTime);
-
-        Assert.Equal(startTime.ToUniversalTime(), window.StartTime);
-        Assert.Equal(endTime.ToUniversalTime(), window.EndTime);
-        Assert.Equal(TimeSpan.FromDays(7), window.Duration);
-    }
-
-    [Fact]
-    public void ResolveObservationWindow_RejectsMoreThanThirtyDays()
-    {
         var exception = Assert.Throws<ArgumentException>(() =>
-            IoTHubService.ResolveObservationWindow("P31D", null, null));
+            IoTHubValidation.ResolveDiagnosticsWindow(null, null, "PT1M", currentTime));
 
-        Assert.Contains("cannot exceed 30 days", exception.Message);
+        Assert.Contains("produce 1440 buckets", exception.Message);
+        Assert.Contains("maximum is 720", exception.Message);
+        Assert.Contains("PT5M or larger", exception.Message);
     }
 
     [Fact]
-    public void BuildExploration_PreservesRequestedIntervalForTargetAndHubMetrics()
+    public void BuildMonitorMetricsOptions_AppliesRequestedIntervalAndWindow()
     {
         var startTime = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
         var window = new IoTHubService.ObservationWindow(startTime, startTime.AddHours(2));
-        const string subscriptionId = "00000000-0000-0000-0000-000000000001";
-        var endpoint = CreateEndpoint("StorageContainer", 60) with
-        {
-            SubscriptionId = subscriptionId
-        };
-        var health = new RoutingEndpointHealth(
-            EndpointHealthStatus: "degraded",
-            ImpactDetails: new RoutingEndpointImpactDetails(
-                LikelyFaultDomain: RoutingFaultDomain.TargetNetwork));
+        var interval = TimeSpan.FromMinutes(15);
 
-        var result = IoTHubService.BuildExploration(
-            endpoint,
-            new ResourceIdentifier(
-                $"/subscriptions/{subscriptionId}/resourceGroups/rg1/providers/Microsoft.Devices/IotHubs/hub1"),
-            health,
+        var options = IoTHubService.BuildMonitorMetricsOptions(
+            "Transactions",
+            "Microsoft.Storage/storageAccounts",
             window,
-            TimeSpan.FromMinutes(15));
+            interval,
+            "Total",
+            "ResponseType eq '*'");
 
-        Assert.NotNull(result.DrillDownCommands);
-        var metricCommands = result.DrillDownCommands
-            .Where(command => command.StartsWith("azmcp monitor metrics query", StringComparison.Ordinal))
-            .ToList();
-        Assert.Equal(2, metricCommands.Count);
-        Assert.All(metricCommands, command => Assert.Contains("--interval PT15M", command));
-        Assert.All(metricCommands, command => Assert.Contains("--start-time 2026-08-01T00:00:00.0000000Z", command));
-        Assert.All(metricCommands, command => Assert.Contains("--end-time 2026-08-01T02:00:00.0000000Z", command));
+        Assert.Equal("Transactions", options.Metricnames);
+        Assert.Equal("Microsoft.Storage/storageAccounts", options.Metricnamespace);
+        Assert.Equal(window.Timespan, options.Timespan);
+        Assert.Equal(interval, options.Interval);
+        Assert.Equal("Total", options.Aggregation);
+        Assert.Equal("ResponseType eq '*'", options.Filter);
+    }
+
+    [Fact]
+    public void BuildMonitorMetricsOptions_OmitsFilterWhenNotProvided()
+    {
+        var startTime = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
+        var window = new IoTHubService.ObservationWindow(startTime, startTime.AddHours(6));
+        var interval = TimeSpan.FromHours(6);
+
+        var options = IoTHubService.BuildMonitorMetricsOptions(
+            "SuccessfulRequests,ServerErrors",
+            "Microsoft.EventHub/namespaces",
+            window,
+            interval,
+            "Total");
+
+        Assert.Equal(interval, options.Interval);
+        Assert.Null(options.Filter);
     }
 
     [Theory]
@@ -191,7 +156,8 @@ public class IoTHubServiceTests
         HttpStatusCode statusCode,
         string errorCode)
     {
-        var responseContent = $"{{\"error\":{{\"code\":\"{errorCode}\",\"message\":\"The resource does not exist.\"}}}}";
+        var responseContent =
+            $"{{\"error\":{{\"code\":\"{errorCode}\",\"message\":\"The resource does not exist.\"}}}}";
 
         Assert.True(IoTHubService.IsResourceNotFoundResponse(statusCode, responseContent));
     }
@@ -252,25 +218,8 @@ public class IoTHubServiceTests
             .Returns(new AccessToken("fake-token", DateTimeOffset.UtcNow.AddHours(1)));
         azureService.GetTokenCredentialAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(credential));
-
         azureService.GetClient(Arg.Any<string?>()).Returns(_ => new HttpClient(handler));
 
         return new IoTHubService(azureService, logger);
     }
-
-    private static RoutingEndpointDetails CreateEndpoint(
-        string endpointType,
-        int? batchFrequencyInSeconds) =>
-        new(
-            Name: "endpoint1",
-            EndpointType: endpointType,
-            EndpointResourceName: "resource1",
-            SubscriptionId: "sub1",
-            ResourceGroup: "rg1",
-            EndpointUri: null,
-            EntityPath: null,
-            ContainerName: null,
-            DatabaseName: null,
-            AuthenticationType: "identityBased",
-            BatchFrequencyInSeconds: batchFrequencyInSeconds);
 }

@@ -8,13 +8,12 @@ namespace Azure.Mcp.Tools.IoTHub.Commands;
 // Shared option validation for IoT Hub commands.
 internal static class IoTHubValidation
 {
+    public static readonly TimeSpan DefaultObservationWindow = TimeSpan.FromHours(24);
     public static readonly TimeSpan MaxObservationWindow = TimeSpan.FromDays(30);
+    public const int MaxMetricBuckets = 720;
 
     public const string InvalidHubNameError =
         "--hub-name must be 3-50 characters long and contain only letters, numbers, or hyphens, and it cannot end with a hyphen.";
-
-    public const string InvalidLookbackError =
-        "--lookback must be a positive duration no greater than 30 days, expressed as hours or ISO 8601 (for example, PT2H or P7D).";
 
     public const string IncompleteTimeRangeError =
         "--start-time and --end-time must be provided together.";
@@ -49,86 +48,79 @@ internal static class IoTHubValidation
         }
     }
 
-    public static void ValidateLookback(string? lookback, ValidationResult validationResult)
+    public static void ValidateDiagnosticsWindow(
+        DateTimeOffset? startTime,
+        DateTimeOffset? endTime,
+        string? interval,
+        ValidationResult validationResult)
     {
-        if (string.IsNullOrWhiteSpace(lookback))
-        {
-            return;
-        }
-
         try
         {
-            var duration = ParseLookback(lookback);
-            if (duration <= TimeSpan.Zero || duration > MaxObservationWindow)
-            {
-                validationResult.Errors.Add(InvalidLookbackError);
-            }
+            ResolveDiagnosticsWindow(startTime, endTime, interval);
         }
-        catch (Exception ex) when (ex is FormatException or OverflowException)
+        catch (ArgumentException ex)
         {
-            validationResult.Errors.Add(InvalidLookbackError);
+            validationResult.Errors.Add(ex.Message);
         }
     }
 
-    public static void ValidateObservationWindow(
-        string? lookback,
+    public static (DateTimeOffset StartTime, DateTimeOffset EndTime, TimeSpan Interval) ResolveDiagnosticsWindow(
         DateTimeOffset? startTime,
         DateTimeOffset? endTime,
-        ValidationResult validationResult)
+        string? interval,
+        DateTimeOffset? currentTime = null)
     {
         if (startTime.HasValue != endTime.HasValue)
         {
-            validationResult.Errors.Add(IncompleteTimeRangeError);
-            return;
+            throw new ArgumentException(IncompleteTimeRangeError);
         }
 
-        if (startTime.HasValue && endTime.HasValue)
+        var end = (endTime ?? currentTime ?? DateTimeOffset.UtcNow).ToUniversalTime();
+        var start = (startTime ?? end.Subtract(DefaultObservationWindow)).ToUniversalTime();
+        if (start >= end)
         {
-            if (startTime.Value >= endTime.Value)
-            {
-                validationResult.Errors.Add(InvalidTimeRangeOrderError);
-            }
-            else if (endTime.Value - startTime.Value > MaxObservationWindow)
-            {
-                validationResult.Errors.Add(TimeRangeTooLargeError);
-            }
-
-            return;
+            throw new ArgumentException(InvalidTimeRangeOrderError);
         }
 
-        ValidateLookback(lookback, validationResult);
+        var duration = end - start;
+        if (duration > MaxObservationWindow)
+        {
+            throw new ArgumentException(TimeRangeTooLargeError);
+        }
+
+        var resolvedInterval = ParseInterval(interval);
+        var bucketCount = (int)Math.Ceiling(duration.Ticks / (double)resolvedInterval.Ticks);
+        if (bucketCount > MaxMetricBuckets)
+        {
+            var minimumInterval = s_supportedIntervals.First(candidate =>
+                Math.Ceiling(duration.Ticks / (double)candidate.Ticks) <= MaxMetricBuckets);
+            throw new ArgumentException(
+                $"The selected window and --interval produce {bucketCount} buckets; the maximum is {MaxMetricBuckets}. Use --interval {System.Xml.XmlConvert.ToString(minimumInterval)} or larger.");
+        }
+
+        return (start, end, resolvedInterval);
     }
 
-    public static TimeSpan ParseLookback(string? lookback)
-    {
-        if (string.IsNullOrWhiteSpace(lookback))
-        {
-            return TimeSpan.FromHours(24);
-        }
-
-        return int.TryParse(lookback, out var hours)
-            ? TimeSpan.FromHours(hours)
-            : System.Xml.XmlConvert.ToTimeSpan(lookback);
-    }
-
-    public static void ValidateInterval(string? interval, ValidationResult validationResult)
+    public static TimeSpan ParseInterval(string? interval)
     {
         if (string.IsNullOrWhiteSpace(interval))
         {
-            return;
+            return TimeSpan.FromHours(1);
         }
 
+        TimeSpan value;
         try
         {
-            if (!s_supportedIntervals.Contains(System.Xml.XmlConvert.ToTimeSpan(interval)))
-            {
-                validationResult.Errors.Add(InvalidIntervalError);
-            }
+            value = System.Xml.XmlConvert.ToTimeSpan(interval);
         }
-        catch (FormatException)
+        catch (FormatException ex)
         {
-            validationResult.Errors.Add(InvalidIntervalError);
+            throw new ArgumentException(InvalidIntervalError, ex);
         }
+
+        return s_supportedIntervals.Contains(value)
+            ? value
+            : throw new ArgumentException(InvalidIntervalError);
     }
 
     public static bool IsValidIoTHubName(string value)
