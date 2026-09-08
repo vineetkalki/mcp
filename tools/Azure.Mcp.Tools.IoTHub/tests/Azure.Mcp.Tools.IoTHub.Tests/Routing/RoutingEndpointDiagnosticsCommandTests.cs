@@ -7,7 +7,6 @@ using Azure.Mcp.Tools.IoTHub.Commands;
 using Azure.Mcp.Tools.IoTHub.Commands.Routing;
 using Azure.Mcp.Tools.IoTHub.Models;
 using Azure.Mcp.Tools.IoTHub.Services;
-using Microsoft.Mcp.Core.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Xunit;
@@ -23,6 +22,7 @@ public class RoutingEndpointDiagnosticsCommandTests
         var command = Command.GetCommand();
 
         Assert.Equal("endpoint-diagnostics", command.Name);
+        Assert.DoesNotContain(command.Options, option => option.Name.StartsWith("retry", StringComparison.Ordinal));
         Assert.DoesNotContain(command.Options, option => option.Name == "lookback");
     }
 
@@ -45,7 +45,6 @@ public class RoutingEndpointDiagnosticsCommandTests
                 Arg.Any<DateTimeOffset?>(),
                 Arg.Any<string?>(),
                 Arg.Any<string?>(),
-                Arg.Any<RetryPolicyOptions?>(),
                 Arg.Any<CancellationToken>())
                 .Returns(CreateResult());
         }
@@ -84,7 +83,6 @@ public class RoutingEndpointDiagnosticsCommandTests
             Arg.Any<DateTimeOffset?>(),
             Arg.Any<string?>(),
             Arg.Any<string?>(),
-            Arg.Any<RetryPolicyOptions?>(),
             Arg.Any<CancellationToken>())
             .Returns(CreateResult());
 
@@ -107,7 +105,6 @@ public class RoutingEndpointDiagnosticsCommandTests
             endTime,
             "PT1H",
             Arg.Any<string?>(),
-            Arg.Any<RetryPolicyOptions?>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -123,7 +120,6 @@ public class RoutingEndpointDiagnosticsCommandTests
             Arg.Any<DateTimeOffset?>(),
             Arg.Any<string?>(),
             Arg.Any<string?>(),
-            Arg.Any<RetryPolicyOptions?>(),
             Arg.Any<CancellationToken>())
             .Returns(CreateResult());
 
@@ -174,7 +170,12 @@ public class RoutingEndpointDiagnosticsCommandTests
                     null,
                     null,
                     null,
-                    new RoutingTargetInfo("resolved", "/subscriptions/sub123/resourceGroups/rg1/providers/Microsoft.EventHub/namespaces/namespace"),
+                    new RoutingTargetInfo(
+                        "resolved",
+                        "/subscriptions/sub123/resourceGroups/rg1/providers/Microsoft.EventHub/namespaces/namespace",
+                        ExistenceStatus: "indeterminate",
+                        Error: new RoutingDiagnosticError(
+                            "targetArm", "read", null, 403, "AuthorizationFailed", "Reader", "Existence unavailable.")),
                     new RoutingHubEmitted(metrics, []),
                     new RoutingTargetEmitted(
                         "queried",
@@ -182,7 +183,13 @@ public class RoutingEndpointDiagnosticsCommandTests
                         "Microsoft.EventHub/namespaces",
                         [],
                         [],
-                        []))
+                        [])
+                    {
+                        MetricAvailability = new Dictionary<string, string>
+                        {
+                            ["SuccessfulRequests"] = "noValuesReturned"
+                        }
+                    })
             ]);
         Service.GetRoutingEndpointDiagnostics(
             Arg.Any<string>(),
@@ -193,7 +200,6 @@ public class RoutingEndpointDiagnosticsCommandTests
             Arg.Any<DateTimeOffset?>(),
             Arg.Any<string?>(),
             Arg.Any<string?>(),
-            Arg.Any<RetryPolicyOptions?>(),
             Arg.Any<CancellationToken>())
             .Returns(result);
 
@@ -209,6 +215,10 @@ public class RoutingEndpointDiagnosticsCommandTests
         var bucket = Assert.Single(endpoint.HubEmitted.RoutingMetrics.Buckets);
         Assert.Equal(5, bucket["routingDeliveries.result.success.total.count"].GetInt64());
         Assert.Equal(12.5d, bucket["routingDeliveryLatency.avg.ms"].GetDouble());
+        Assert.Equal("valuesReturned", endpoint.HubEmitted.RoutingMetrics.MetricAvailability["RoutingDeliveries"]);
+        Assert.Equal("noValuesReturned", endpoint.TargetEmitted.MetricAvailability["SuccessfulRequests"]);
+        Assert.Equal("AuthorizationFailed", endpoint.Target.Error?.Code);
+        Assert.Empty(endpoint.TargetEmitted.Errors);
     }
 
     [Fact]
@@ -223,7 +233,6 @@ public class RoutingEndpointDiagnosticsCommandTests
             Arg.Any<DateTimeOffset?>(),
             Arg.Any<string?>(),
             Arg.Any<string?>(),
-            Arg.Any<RetryPolicyOptions?>(),
             Arg.Any<CancellationToken>())
             .ThrowsAsync(new Exception("Test error"));
 

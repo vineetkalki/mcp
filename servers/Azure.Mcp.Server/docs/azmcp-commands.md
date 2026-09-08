@@ -3247,6 +3247,13 @@ Diagnostics defaults to the previous 24 hours with `PT1H` buckets. `--start-time
 be supplied together. The maximum observation window is 30 days, and the selected window and interval
 cannot exceed 720 buckets.
 
+Diagnostics distinguishes values returned, no values returned, failed queries, and partial evidence
+through per-metric availability metadata. Missing metric values do not mean zero traffic. Target
+metrics describe the parent resource and can include other clients; they do not prove endpoint
+delivery. Current target existence is separate from historical metrics, with any existence-check
+error under `target.error`. These routing tools do not determine overall hub health or device ingress
+health and use Azure SDK retry defaults without retry-policy options.
+
 ### Azure IoT Operations
 
 ```bash

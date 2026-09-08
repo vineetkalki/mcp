@@ -9,6 +9,39 @@ namespace Azure.Mcp.Tools.IoTHub.Tests.Services;
 public class RoutingMetricEvidenceBuilderTests
 {
     [Fact]
+    public void Availability_DistinguishesEmptySuccessfulAndFailedMetrics()
+    {
+        var builder = new RoutingMetricEvidenceBuilder("namespace");
+        builder.AddCountSeries("EmptyCount", "Total", new Dictionary<string, string>(), []);
+        builder.AddAverageSeries("EmptyAverage", "Milliseconds", new Dictionary<string, string>(), []);
+        builder.AddMaximumSeries("EmptyMaximum", "Percent", new Dictionary<string, string>(), []);
+        builder.MarkFailed("Failed");
+        builder.MarkSuccessful("Failed");
+        builder.AddCountSeries("Zero", "Total", new Dictionary<string, string>(), [(DateTimeOffset.UtcNow, 0d)]);
+
+        var result = builder.Build();
+
+        Assert.Equal("noValuesReturned", result.MetricAvailability["EmptyCount"]);
+        Assert.Equal("noValuesReturned", result.MetricAvailability["EmptyAverage"]);
+        Assert.Equal("noValuesReturned", result.MetricAvailability["EmptyMaximum"]);
+        Assert.Equal("failed", result.MetricAvailability["Failed"]);
+        Assert.Equal("valuesReturned", result.MetricAvailability["Zero"]);
+    }
+
+    [Fact]
+    public void AddCountSeries_InvalidLaterPointDoesNotLeaveUnlabelledPartialValues()
+    {
+        var builder = new RoutingMetricEvidenceBuilder("namespace");
+        var timestamp = DateTimeOffset.UtcNow;
+
+        Assert.Throws<InvalidDataException>(() => builder.AddCountSeries(
+            "Count", "Total", new Dictionary<string, string>(), [(timestamp, 1d), (timestamp.AddHours(1), 0.5d)]));
+
+        Assert.Empty(builder.Build().Buckets);
+        Assert.Empty(builder.Build().WindowAggregates);
+    }
+
+    [Fact]
     public void AddCountSeries_SerializesIntegerBucketsAndAggregate()
     {
         var start = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);

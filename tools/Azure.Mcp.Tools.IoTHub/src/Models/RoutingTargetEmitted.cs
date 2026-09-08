@@ -11,4 +11,7 @@ public sealed record RoutingTargetEmitted(
     string? MetricNamespace,
     Dictionary<string, JsonElement> WindowAggregates,
     List<Dictionary<string, JsonElement>> Buckets,
-    List<RoutingDiagnosticError> Errors);
+    List<RoutingDiagnosticError> Errors)
+{
+    public Dictionary<string, string> MetricAvailability { get; init; } = [];
+}

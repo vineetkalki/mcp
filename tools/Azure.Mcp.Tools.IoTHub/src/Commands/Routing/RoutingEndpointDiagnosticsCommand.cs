@@ -3,7 +3,6 @@
 
 using System.Net;
 using Azure;
-using Azure.Mcp.Core.Commands.Subscription;
 using Azure.Mcp.Core.Services.Azure.Subscription;
 using Azure.Mcp.Tools.IoTHub.Models;
 using Azure.Mcp.Tools.IoTHub.Options.Routing;
@@ -23,7 +22,9 @@ namespace Azure.Mcp.Tools.IoTHub.Commands.Routing;
         endpoints. Returns per-endpoint IoT Hub RoutingDeliveries and RoutingDeliveryLatency buckets,
         current target existence, and native target-resource Azure Monitor metrics for Event Hubs,
         Service Bus, Blob Storage, and Cosmos DB. The tool does not infer health, confidence, or likely
-        cause. Use paired --start-time and --end-time for an absolute UTC range; if omitted, the previous
+        cause or assess whole-hub health. No returned values do not mean zero activity. Target metrics
+        describe the shared parent resource and cannot be attributed to this endpoint.
+        Use paired --start-time and --end-time for an absolute UTC range; if omitted, the previous
         24 hours are used. --interval defaults to PT1H. At most 720 buckets are allowed.
         Requires hub-name and resource-group.
         """,
@@ -37,7 +38,7 @@ public sealed class RoutingEndpointDiagnosticsCommand(
     ILogger<RoutingEndpointDiagnosticsCommand> logger,
     IIoTHubService service,
     ISubscriptionResolver subscriptionResolver)
-    : SubscriptionCommand<RoutingEndpointDiagnosticsOptions, RoutingEndpointDiagnostics>(subscriptionResolver)
+    : BaseIoTHubCommand<RoutingEndpointDiagnosticsOptions, RoutingEndpointDiagnostics>(subscriptionResolver)
 {
     private readonly ILogger<RoutingEndpointDiagnosticsCommand> _logger = logger;
     private readonly IIoTHubService _service = service;
@@ -71,7 +72,6 @@ public sealed class RoutingEndpointDiagnosticsCommand(
                 options.EndTime,
                 options.Interval,
                 options.Tenant,
-                options.RetryPolicy,
                 cancellationToken);
 
             context.Response.Results = ResponseResult.Create(

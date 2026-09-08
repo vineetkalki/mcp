@@ -3,7 +3,6 @@
 
 using System.Net;
 using Azure;
-using Azure.Mcp.Core.Commands.Subscription;
 using Azure.Mcp.Core.Services.Azure.Subscription;
 using Azure.Mcp.Tools.IoTHub.Models;
 using Azure.Mcp.Tools.IoTHub.Options.Routing;
@@ -22,7 +21,8 @@ namespace Azure.Mcp.Tools.IoTHub.Commands.Routing;
         Get the current IoT Hub-reported health snapshot for one or all message-routing custom endpoints.
         Returns the routingEndpointsHealth fields endpointId, endpointName, healthStatus, lastKnownError,
         lastKnownErrorTime, lastSuccessfulSendAttemptTime, and lastSendAttemptTime without applying a time
-        window, querying metrics, or inferring health. Requires hub-name and resource-group.
+        window, querying metrics, or inferring health. This is not a whole-hub health assessment.
+        Requires hub-name and resource-group.
         """,
     Destructive = false,
     Idempotent = true,
@@ -34,7 +34,7 @@ public sealed class RoutingEndpointHealthGetCommand(
     ILogger<RoutingEndpointHealthGetCommand> logger,
     IIoTHubService service,
     ISubscriptionResolver subscriptionResolver)
-    : SubscriptionCommand<RoutingEndpointHealthGetOptions, RoutingEndpointHealthGetCommand.RoutingEndpointHealthGetCommandResult>(subscriptionResolver)
+    : BaseIoTHubCommand<RoutingEndpointHealthGetOptions, RoutingEndpointHealthGetCommand.RoutingEndpointHealthGetCommandResult>(subscriptionResolver)
 {
     private readonly ILogger<RoutingEndpointHealthGetCommand> _logger = logger;
     private readonly IIoTHubService _service = service;
@@ -58,7 +58,6 @@ public sealed class RoutingEndpointHealthGetCommand(
                 options.Subscription!,
                 options.EndpointName,
                 options.Tenant,
-                options.RetryPolicy,
                 cancellationToken)
                 ?? [];
 

@@ -8,4 +8,7 @@ namespace Azure.Mcp.Tools.IoTHub.Models;
 public sealed record RoutingMetricEvidence(
     string MetricNamespace,
     Dictionary<string, JsonElement> WindowAggregates,
-    List<Dictionary<string, JsonElement>> Buckets);
+    List<Dictionary<string, JsonElement>> Buckets)
+{
+    public Dictionary<string, string> MetricAvailability { get; init; } = [];
+}

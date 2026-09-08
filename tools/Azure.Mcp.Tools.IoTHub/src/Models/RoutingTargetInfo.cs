@@ -9,4 +9,5 @@ public sealed record RoutingTargetInfo(
     string? ResourceType = null,
     string? RoutedResourceId = null,
     string? ExistenceStatus = null,
-    string? ExistenceObservedAt = null);
+    string? ExistenceObservedAt = null,
+    RoutingDiagnosticError? Error = null);

@@ -49,6 +49,7 @@ conversation context or asks for missing required values.
 - Repair routing configuration, role assignments, networking, or downstream resources.
 - Query the downstream data plane or use endpoint connection strings.
 - Attribute parent-resource metrics to one queue, topic, event hub, container, or database container.
+- Determine overall hub health or distinguish absent device ingress from route-selection problems.
 
 ## API
 
@@ -194,6 +195,10 @@ The effective window is echoed in the result so an agent never has to infer whic
       "hubEmitted": {
         "routingMetrics": {
           "metricNamespace": "Microsoft.Devices/IotHubs",
+          "metricAvailability": {
+            "RoutingDeliveries": "valuesReturned",
+            "RoutingDeliveryLatency": "valuesReturned"
+          },
           "windowAggregates": {
             "routingDeliveries.result.success.total.count": 50,
             "routingDeliveries.result.failure.failureReasonCategory.endpointUnhealthy.total.count": 10
@@ -213,6 +218,9 @@ The effective window is echoed in the result so an agent never has to infer whic
         "queryStatus": "queried",
         "metricScope": "parentResource",
         "metricNamespace": "Microsoft.Storage/storageAccounts",
+        "metricAvailability": {
+          "Transactions": "valuesReturned"
+        },
         "windowAggregates": {
           "transactions.responseType.success.total.count": 50,
           "transactions.responseType.authorizationError.total.count": 10
@@ -394,6 +402,24 @@ Field-presence rules:
 - `windowAggregates` and `buckets` are empty for `unresolved`, `unsupported`, `unauthorized`, `notFound`,
   and `failed`, unless a partial query completed before the final status was established.
 - A missing metric field is omitted; an explicit zero means Azure Monitor returned zero.
+- `metricAvailability` identifies each requested metric independently: `valuesReturned`,
+  `noValuesReturned`, `failed`, or `partial`. A successful query with no values is not evidence of
+  zero traffic. Numeric values remain in the direct bucket fields, not in this metadata.
+- A non-success metric error inside an HTTP 200 response is reported in `errors`, not treated as an
+  empty successful query. Successful metrics in the same response are retained.
+- Filtered queries explicitly request a series limit. Reaching that limit is reported as possible
+  truncation, so incomplete series are not presented as complete evidence.
+- Caller cancellation stops collection instead of becoming a resource failure or triggering fallback.
+- An existence-check failure is returned as `target.error`; it does not change the independent
+  `targetEmitted.queryStatus`. `target.existenceObservedAt` describes a current check, not the historical
+  observation window.
+
+Both routing commands use Azure SDK retry defaults and expose no retry-policy options.
+
+Parent-resource metrics may include sibling endpoints and other clients. Even successful target
+requests do not prove delivery from this IoT Hub. These tools do not query device ingress, ingress
+throttling, or route predicates, so empty routing evidence cannot establish that the hub is idle or
+healthy.
 
 Errors are factual and structured:
 
@@ -464,6 +490,11 @@ Tests verify:
 - unresolved key-based and identity-based targets are reported without guessing;
 - authorization, not-found, unsupported, and partial-query states are explicit;
 - current resource checks are labeled with their observation time.
+
+The integration fixture provisions a Service Bus queue and topic on the same namespace, with
+identity-based IoT Hub routes. Integration tests assert both named endpoints exist instead of accepting
+empty collections. Historical query timestamps are recording variables so playback uses the original
+window. Publishing recordings requires the recording workflow in [recorded tests](../../../docs/recorded-tests.md).
 
 ## References
 

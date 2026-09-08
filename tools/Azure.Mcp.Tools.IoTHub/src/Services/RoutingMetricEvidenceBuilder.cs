@@ -14,11 +14,39 @@ internal sealed class RoutingMetricEvidenceBuilder(string metricNamespace)
     private readonly Dictionary<string, JsonElement> _windowAggregates = new(StringComparer.Ordinal);
     private readonly SortedDictionary<DateTimeOffset, Dictionary<string, JsonElement>> _buckets = [];
     private readonly Dictionary<string, string> _fieldIdentities = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _metricAvailability = new(StringComparer.Ordinal);
 
     public bool HasValues => _windowAggregates.Count > 0 || _buckets.Count > 0;
 
+    public bool ContainsMetric(string metricName) => _metricAvailability.ContainsKey(metricName);
+
+    public void MarkSuccessful(string metricName, bool hasValues = false)
+    {
+        if (!_metricAvailability.TryGetValue(metricName, out var status) || status == "noValuesReturned")
+        {
+            _metricAvailability[metricName] = hasValues ? "valuesReturned" : "noValuesReturned";
+        }
+        else if (hasValues && status == "failed")
+        {
+            _metricAvailability[metricName] = "partial";
+        }
+    }
+
+    public void MarkFailed(string metricName) =>
+        _metricAvailability[metricName] =
+            _metricAvailability.GetValueOrDefault(metricName) is "valuesReturned" or "partial"
+                ? "partial"
+                : "failed";
+
+    public void MarkPartial(string metricName) => _metricAvailability[metricName] = "partial";
+
     public void Merge(RoutingMetricEvidence evidence)
     {
+        foreach (var (metricName, status) in evidence.MetricAvailability)
+        {
+            _metricAvailability[metricName] = status;
+        }
+
         foreach (var (fieldName, value) in evidence.WindowAggregates)
         {
             if (!_windowAggregates.TryAdd(fieldName, value))
@@ -58,7 +86,7 @@ internal sealed class RoutingMetricEvidenceBuilder(string metricNamespace)
         const string unit = "Count";
         var fieldName = ResolveFieldName(metricName, aggregation, unit, dimensions);
         long sum = 0;
-        var hasValue = false;
+        var values = new Dictionary<DateTimeOffset, long>();
         foreach (var (timestamp, value) in points)
         {
             if (!value.HasValue)
@@ -68,17 +96,31 @@ internal sealed class RoutingMetricEvidenceBuilder(string metricNamespace)
 
             var count = ToInt64Count(value.Value, fieldName);
             sum = checked(sum + count);
-            AddCountBucketValue(timestamp, fieldName, count);
-            hasValue = true;
+            var utcTimestamp = timestamp.ToUniversalTime();
+            values[utcTimestamp] = checked(values.GetValueOrDefault(utcTimestamp) + count);
         }
 
+        var hasValue = values.Count > 0;
         if (hasValue)
         {
             var current = _windowAggregates.TryGetValue(fieldName, out var existing)
                 ? existing.GetInt64()
                 : 0;
-            _windowAggregates[fieldName] = ToJsonElement(checked(current + sum));
+            var aggregate = checked(current + sum);
+            foreach (var (timestamp, value) in values)
+            {
+                var currentBucketValue = _buckets.TryGetValue(timestamp, out var bucket) &&
+                    bucket.TryGetValue(fieldName, out var existingBucketValue)
+                        ? existingBucketValue.GetInt64() : 0;
+                _ = checked(currentBucketValue + value);
+            }
+            foreach (var (timestamp, value) in values)
+            {
+                AddCountBucketValue(timestamp, fieldName, value);
+            }
+            _windowAggregates[fieldName] = ToJsonElement(aggregate);
         }
+        MarkSuccessful(metricName, hasValue);
     }
 
     public void AddAverageSeries(
@@ -88,13 +130,16 @@ internal sealed class RoutingMetricEvidenceBuilder(string metricNamespace)
         IEnumerable<(DateTimeOffset Timestamp, double? Value)> points)
     {
         var fieldName = ResolveFieldName(metricName, "Average", unit, dimensions);
-        foreach (var (timestamp, value) in points)
+        var values = points.Where(point => point.Value.HasValue).ToArray();
+        foreach (var (_, value) in values)
         {
-            if (value.HasValue)
-            {
-                AddDoubleBucketValue(timestamp, fieldName, value.Value);
-            }
+            ValidateFinite(value!.Value, fieldName);
         }
+        foreach (var (timestamp, value) in values)
+        {
+            AddDoubleBucketValue(timestamp, fieldName, value!.Value);
+        }
+        MarkSuccessful(metricName, values.Length > 0);
     }
 
     public void AddMaximumSeries(
@@ -121,6 +166,7 @@ internal sealed class RoutingMetricEvidenceBuilder(string metricNamespace)
         {
             _windowAggregates[fieldName] = ToJsonElement(maximum.Value);
         }
+        MarkSuccessful(metricName, maximum.HasValue);
     }
 
     public RoutingMetricEvidence Build() => new(
@@ -139,7 +185,10 @@ internal sealed class RoutingMetricEvidenceBuilder(string metricNamespace)
                 bucket[fieldName] = value;
             }
             return bucket;
-        })]);
+        })])
+    {
+        MetricAvailability = new Dictionary<string, string>(_metricAvailability, StringComparer.Ordinal)
+    };
 
     private string ResolveFieldName(
         string metricName,

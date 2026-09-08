@@ -124,6 +124,7 @@ public class IoTHubServiceTests
         Assert.Equal(interval, options.Interval);
         Assert.Equal("Total", options.Aggregation);
         Assert.Equal("ResponseType eq '*'", options.Filter);
+        Assert.Equal(IoTHubService.MetricSeriesLimit, options.Top);
     }
 
     [Fact]
@@ -142,6 +143,7 @@ public class IoTHubServiceTests
 
         Assert.Equal(interval, options.Interval);
         Assert.Null(options.Filter);
+        Assert.Null(options.Top);
     }
 
     [Theory]

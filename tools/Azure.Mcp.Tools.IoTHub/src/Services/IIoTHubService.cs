@@ -21,7 +21,6 @@ public interface IIoTHubService
         string subscription,
         string? endpointName = null,
         string? tenant = null,
-        RetryPolicyOptions? retryPolicy = null,
         CancellationToken cancellationToken = default);
 
     Task<RoutingEndpointDiagnostics> GetRoutingEndpointDiagnostics(
@@ -33,6 +32,5 @@ public interface IIoTHubService
         DateTimeOffset? endTime = null,
         string? interval = null,
         string? tenant = null,
-        RetryPolicyOptions? retryPolicy = null,
         CancellationToken cancellationToken = default);
 }

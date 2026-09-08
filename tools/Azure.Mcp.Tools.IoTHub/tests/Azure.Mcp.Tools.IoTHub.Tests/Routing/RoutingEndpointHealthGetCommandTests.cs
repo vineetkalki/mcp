@@ -7,7 +7,6 @@ using Azure.Mcp.Tools.IoTHub.Commands;
 using Azure.Mcp.Tools.IoTHub.Commands.Routing;
 using Azure.Mcp.Tools.IoTHub.Models;
 using Azure.Mcp.Tools.IoTHub.Services;
-using Microsoft.Mcp.Core.Options;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Xunit;
@@ -23,6 +22,7 @@ public class RoutingEndpointHealthGetCommandTests
         var command = Command.GetCommand();
 
         Assert.Equal("endpoint-health", command.Name);
+        Assert.DoesNotContain(command.Options, option => option.Name.StartsWith("retry", StringComparison.Ordinal));
         Assert.DoesNotContain(command.Options, option => option.Name is "lookback" or "start-time" or "end-time" or "interval");
     }
 
@@ -41,7 +41,6 @@ public class RoutingEndpointHealthGetCommandTests
                 Arg.Any<string>(),
                 Arg.Any<string?>(),
                 Arg.Any<string?>(),
-                Arg.Any<RetryPolicyOptions?>(),
                 Arg.Any<CancellationToken>())
                 .Returns([]);
         }
@@ -60,7 +59,6 @@ public class RoutingEndpointHealthGetCommandTests
             Arg.Any<string>(),
             Arg.Any<string?>(),
             Arg.Any<string?>(),
-            Arg.Any<RetryPolicyOptions?>(),
             Arg.Any<CancellationToken>())
             .Returns(
             [
@@ -101,7 +99,6 @@ public class RoutingEndpointHealthGetCommandTests
             Arg.Any<string>(),
             Arg.Any<string?>(),
             Arg.Any<string?>(),
-            Arg.Any<RetryPolicyOptions?>(),
             Arg.Any<CancellationToken>())
             .Returns([]);
 
@@ -117,7 +114,6 @@ public class RoutingEndpointHealthGetCommandTests
             "sub123",
             "endpoint1",
             Arg.Any<string?>(),
-            Arg.Any<RetryPolicyOptions?>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -146,7 +142,6 @@ public class RoutingEndpointHealthGetCommandTests
             Arg.Any<string>(),
             Arg.Any<string?>(),
             Arg.Any<string?>(),
-            Arg.Any<RetryPolicyOptions?>(),
             Arg.Any<CancellationToken>())
             .ThrowsAsync(new Exception("Test error"));
 

@@ -1,3 +1,5 @@
 changes:
+  - section: "Bugs Fixed"
+    description: "Routing diagnostics now explicitly handles metric series limits and per-metric Azure Monitor errors, distinguishes missing data from zero with metric availability metadata, separates target existence errors from metric query status, and honors caller cancellation. Routing commands use Azure SDK retry defaults without exposing retry-policy options."
   - section: "Features Added"
     description: "Added two IoT Hub message-routing troubleshooting commands. `azmcp iothub routing endpoint-health` returns a current `routingEndpointsHealth` snapshot, optionally scoped with `--endpoint-name`, and takes no time-range options; `azmcp iothub routing endpoint-diagnostics` returns factual hub- and target-resource metric evidence for Event Hubs, Service Bus queues/topics, Blob Storage containers, and Cosmos DB SQL containers without inferring confidence, root cause, or health. Diagnostics accepts `--endpoint-name` plus a paired absolute `--start-time` and `--end-time` range with a configurable `--interval`, defaulting to the last 24 hours at a `PT1H` interval when omitted; there is no relative lookback option."

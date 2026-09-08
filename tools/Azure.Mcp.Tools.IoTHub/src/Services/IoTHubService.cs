@@ -69,7 +69,6 @@ public class IoTHubService(
         string subscription,
         string? endpointName = null,
         string? tenant = null,
-        RetryPolicyOptions? retryPolicy = null,
         CancellationToken cancellationToken = default)
     {
         ValidateInputs(hubName, resourceGroup, subscription);
@@ -81,7 +80,6 @@ public class IoTHubService(
                 resourceGroup,
                 subscription,
                 tenant,
-                retryPolicy,
                 cancellationToken);
             var properties = hub.Properties?.ToObjectFromJson(IoTHubJsonContext.Default.IoTHubProperties);
             var endpoints = FilterEndpoints(
@@ -136,7 +134,6 @@ public class IoTHubService(
         DateTimeOffset? endTime = null,
         string? interval = null,
         string? tenant = null,
-        RetryPolicyOptions? retryPolicy = null,
         CancellationToken cancellationToken = default)
     {
         ValidateInputs(hubName, resourceGroup, subscription);
@@ -150,7 +147,6 @@ public class IoTHubService(
                 resourceGroup,
                 subscription,
                 tenant,
-                retryPolicy,
                 cancellationToken);
             var properties = hub.Properties?.ToObjectFromJson(IoTHubJsonContext.Default.IoTHubProperties);
             var endpoints = FilterEndpoints(
@@ -163,7 +159,6 @@ public class IoTHubService(
                 window,
                 resolvedWindow.Interval,
                 tenant,
-                retryPolicy,
                 cancellationToken);
             var targetEvidence = new ConcurrentDictionary<string, Lazy<Task<RoutingTargetEmitted>>>(
                 StringComparer.OrdinalIgnoreCase);
@@ -175,7 +170,6 @@ public class IoTHubService(
                     window,
                     resolvedWindow.Interval,
                     tenant,
-                    retryPolicy,
                     targetEvidence,
                     cancellationToken)));
 
@@ -204,7 +198,6 @@ public class IoTHubService(
         ObservationWindow window,
         TimeSpan interval,
         string? tenant,
-        RetryPolicyOptions? retryPolicy,
         ConcurrentDictionary<string, Lazy<Task<RoutingTargetEmitted>>> targetEvidence,
         CancellationToken cancellationToken)
     {
@@ -236,32 +229,19 @@ public class IoTHubService(
                     window,
                     interval,
                     tenant,
-                    retryPolicy,
                     cancellationToken))).Value;
 
         await Task.WhenAll(existenceTask, evidenceTask);
         var existence = await existenceTask;
         var targetMetrics = await evidenceTask;
-        if (existence.Error is not null)
-        {
-            var errors = new List<RoutingDiagnosticError>(targetMetrics.Errors)
-            {
-                existence.Error
-            };
-            targetMetrics = targetMetrics with
-            {
-                QueryStatus = targetMetrics.QueryStatus == "queried" ? "partial" : targetMetrics.QueryStatus,
-                Errors = errors
-            };
-        }
-
         var target = new RoutingTargetInfo(
             "resolved",
             resolution.ParentResourceId.ToString(),
             resolution.Descriptor.ResourceType,
             resolution.RoutedResourceId.ToString(),
             existence.Status,
-            ToIsoString(existence.ObservedAt));
+            ToIsoString(existence.ObservedAt),
+            existence.Error);
         return CreateEndpointDiagnostic(endpoint, target, hubEvidence, targetMetrics);
     }
 
@@ -292,7 +272,6 @@ public class IoTHubService(
         ObservationWindow window,
         TimeSpan interval,
         string? tenant,
-        RetryPolicyOptions? retryPolicy,
         CancellationToken cancellationToken)
     {
         const string metricNamespace = "Microsoft.Devices/IotHubs";
@@ -304,130 +283,128 @@ public class IoTHubService(
             endpoint => endpoint.Name,
             _ => new List<RoutingDiagnosticError>(),
             StringComparer.OrdinalIgnoreCase);
-        var armClient = await CreateArmClientAsync(
-            tenant,
-            retryPolicy,
-            cancellationToken: cancellationToken);
-
-        try
+        if (endpoints.Count == 0)
         {
-            var options = BuildMonitorMetricsOptions(
-                "RoutingDeliveries",
-                metricNamespace,
-                window,
-                interval,
-                "Total",
-                "EndpointName eq '*' and Result eq '*' and FailureReasonCategory eq '*'");
-            var metrics = armClient.GetMonitorMetricsAsync(hubResourceId, options, cancellationToken);
-            await foreach (var metric in metrics.WithCancellation(cancellationToken))
+            return [];
+        }
+
+        var armClient = await CreateRoutingArmClientAsync(tenant, cancellationToken);
+        var endpointFilter = BuildEndpointFilter(endpoints);
+        foreach (var metricName in new[] { "RoutingDeliveries", "RoutingDeliveryLatency" })
+        {
+            var isDeliveryCount = metricName == "RoutingDeliveries";
+            try
             {
-                foreach (var series in metric.Timeseries)
+                var options = BuildMonitorMetricsOptions(
+                    metricName,
+                    metricNamespace,
+                    window,
+                    interval,
+                    isDeliveryCount ? "Total" : "Average",
+                    isDeliveryCount
+                        ? $"{endpointFilter} and Result eq '*' and FailureReasonCategory eq '*'"
+                        : endpointFilter);
+                var metrics = armClient.GetMonitorMetricsAsync(hubResourceId, options, cancellationToken);
+                var metricReturned = false;
+                await foreach (var metric in metrics.WithCancellation(cancellationToken))
                 {
-                    var endpointName = GetDimensionValue(series, "EndpointName");
-                    if (string.IsNullOrWhiteSpace(endpointName) ||
-                        !builders.TryGetValue(endpointName, out var builder))
+                    if (!string.Equals(metric.Name?.Value, metricName, StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
                     }
-
-                    var dimensions = new Dictionary<string, string>(StringComparer.Ordinal);
-                    AddDimensionIfPresent(series, dimensions, "Result");
-                    AddDimensionIfPresent(series, dimensions, "FailureReasonCategory");
-                    try
+                    metricReturned = true;
+                    var metricError = GetMetricResponseError(
+                        metric, metricName, hubResourceId, "hubAzureMonitor", "Reader");
+                    if (metricError is not null)
                     {
-                        builder.AddCountSeries(
-                            "RoutingDeliveries",
-                            "Total",
-                            dimensions,
-                            series.Data.Select(point => (point.TimeStamp, point.Total ?? point.Count)));
-                    }
-                    catch (Exception ex) when (ex is InvalidDataException or OverflowException)
-                    {
-                        errors[endpointName].Add(CreateDiagnosticError(
-                            ex,
-                            "hubAzureMonitor",
-                            "RoutingDeliveries",
-                            hubResourceId.ToString(),
-                            "Reader",
-                            "IoT Hub routing delivery counts could not be represented."));
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(
-                ex,
-                "Unable to query RoutingDeliveries for IoT Hub '{HubResourceId}'.",
-                hubResourceId);
-            AddSharedError(
-                errors,
-                CreateDiagnosticError(
-                    ex,
-                    "hubAzureMonitor",
-                    "RoutingDeliveries",
-                    hubResourceId.ToString(),
-                    "Reader",
-                    "IoT Hub routing delivery metrics could not be read."));
-        }
-
-        try
-        {
-            var options = BuildMonitorMetricsOptions(
-                "RoutingDeliveryLatency",
-                metricNamespace,
-                window,
-                interval,
-                "Average",
-                "EndpointName eq '*'");
-            var metrics = armClient.GetMonitorMetricsAsync(hubResourceId, options, cancellationToken);
-            await foreach (var metric in metrics.WithCancellation(cancellationToken))
-            {
-                foreach (var series in metric.Timeseries)
-                {
-                    var endpointName = GetDimensionValue(series, "EndpointName");
-                    if (string.IsNullOrWhiteSpace(endpointName) ||
-                        !builders.TryGetValue(endpointName, out var builder))
-                    {
+                        AddSharedError(errors, metricError);
+                        foreach (var builder in builders.Values)
+                        {
+                            builder.MarkFailed(metricName);
+                        }
                         continue;
                     }
 
-                    try
+                    foreach (var series in metric.Timeseries)
                     {
-                        builder.AddAverageSeries(
-                            "RoutingDeliveryLatency",
-                            "Milliseconds",
-                            EmptyDimensions,
-                            series.Data.Select(point => (point.TimeStamp, point.Average)));
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var endpointName = GetDimensionValue(series, "EndpointName");
+                        if (string.IsNullOrWhiteSpace(endpointName) ||
+                            !builders.TryGetValue(endpointName, out var builder))
+                        {
+                            continue;
+                        }
+
+                        try
+                        {
+                            if (isDeliveryCount)
+                            {
+                                var dimensions = new Dictionary<string, string>(StringComparer.Ordinal);
+                                AddDimensionIfPresent(series, dimensions, "Result");
+                                AddDimensionIfPresent(series, dimensions, "FailureReasonCategory");
+                                builder.AddCountSeries(
+                                    metricName,
+                                    "Total",
+                                    dimensions,
+                                    series.Data.Select(point => (point.TimeStamp, point.Total ?? point.Count)));
+                            }
+                            else
+                            {
+                                builder.AddAverageSeries(
+                                    metricName,
+                                    "Milliseconds",
+                                    EmptyDimensions,
+                                    series.Data.Select(point => (point.TimeStamp, point.Average)));
+                            }
+                        }
+                        catch (Exception ex) when (ex is InvalidDataException or OverflowException)
+                        {
+                            builder.MarkFailed(metricName);
+                            errors[endpointName].Add(CreateDiagnosticError(
+                                ex, "hubAzureMonitor", metricName, hubResourceId.ToString(), "Reader",
+                                "IoT Hub routing metrics could not be represented."));
+                        }
                     }
-                    catch (InvalidDataException ex)
+
+                    if (metric.Timeseries.Count >= MetricSeriesLimit)
                     {
-                        errors[endpointName].Add(CreateDiagnosticError(
-                            ex,
-                            "hubAzureMonitor",
-                            "RoutingDeliveryLatency",
-                            hubResourceId.ToString(),
-                            "Reader",
-                            "IoT Hub routing delivery latency could not be represented."));
+                        AddSharedError(errors, CreateSeriesLimitError(
+                            metricName, hubResourceId, "hubAzureMonitor"));
+                        foreach (var builder in builders.Values)
+                        {
+                            builder.MarkPartial(metricName);
+                        }
+                    }
+                }
+
+                if (!metricReturned)
+                {
+                    AddSharedError(errors, CreateMissingMetricError(metricName, hubResourceId, "hubAzureMonitor"));
+                }
+                foreach (var builder in builders.Values)
+                {
+                    if (metricReturned)
+                    {
+                        builder.MarkSuccessful(metricName);
+                    }
+                    else
+                    {
+                        builder.MarkFailed(metricName);
                     }
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(
-                ex,
-                "Unable to query RoutingDeliveryLatency for IoT Hub '{HubResourceId}'.",
-                hubResourceId);
-            AddSharedError(
-                errors,
-                CreateDiagnosticError(
-                    ex,
-                    "hubAzureMonitor",
-                    "RoutingDeliveryLatency",
-                    hubResourceId.ToString(),
-                    "Reader",
-                    "IoT Hub routing delivery latency metrics could not be read."));
+            catch (Exception ex) when (ex is not OperationCanceledException && !cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "Unable to query '{MetricName}' for IoT Hub '{HubResourceId}'.",
+                    metricName, hubResourceId);
+                foreach (var builder in builders.Values)
+                {
+                    builder.MarkFailed(metricName);
+                }
+                AddSharedError(errors, CreateDiagnosticError(
+                    ex, "hubAzureMonitor", metricName, hubResourceId.ToString(), "Reader",
+                    "IoT Hub routing metrics could not be read."));
+            }
         }
 
         return endpoints.ToDictionary(
@@ -444,15 +421,11 @@ public class IoTHubService(
         ObservationWindow window,
         TimeSpan interval,
         string? tenant,
-        RetryPolicyOptions? retryPolicy,
         CancellationToken cancellationToken)
     {
         var builder = new RoutingMetricEvidenceBuilder(descriptor.ResourceType);
         var errors = new List<RoutingDiagnosticError>();
-        var armClient = await CreateArmClientAsync(
-            tenant,
-            retryPolicy,
-            cancellationToken: cancellationToken);
+        var armClient = await CreateRoutingArmClientAsync(tenant, cancellationToken);
 
         switch (descriptor.EndpointType)
         {
@@ -534,12 +507,15 @@ public class IoTHubService(
 
         var evidence = builder.Build();
         return new RoutingTargetEmitted(
-            GetQueryStatus(builder.HasValues, errors),
+            GetQueryStatus(evidence.MetricAvailability.Values.Any(status => status != "failed"), errors),
             "parentResource",
             descriptor.ResourceType,
             evidence.WindowAggregates,
             evidence.Buckets,
-            errors);
+            errors)
+        {
+            MetricAvailability = evidence.MetricAvailability
+        };
     }
 
     private async Task QueryMetricSetWithFallbackAsync(
@@ -556,7 +532,6 @@ public class IoTHubService(
         List<RoutingDiagnosticError> errors,
         CancellationToken cancellationToken)
     {
-        var batch = new RoutingMetricEvidenceBuilder(resourceType);
         try
         {
             await QueryMetricSetCoreAsync(
@@ -569,12 +544,14 @@ public class IoTHubService(
                 window,
                 interval,
                 armClient,
-                batch,
+                destination,
+                errors,
                 cancellationToken);
-            destination.Merge(batch.Build());
             return;
         }
         catch (Exception ex) when (
+            ex is not OperationCanceledException &&
+            !cancellationToken.IsCancellationRequested &&
             metricNames.Length > 1 &&
             !IsAuthorizationError(ex) &&
             !IsNotFoundException(ex))
@@ -584,15 +561,18 @@ public class IoTHubService(
                 "Batched target metric query failed for '{ResourceId}'; retrying metrics individually.",
                 resourceId);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException && !cancellationToken.IsCancellationRequested)
         {
-            errors.Add(CreateTargetMetricError(ex, resourceId, string.Join(",", metricNames)));
+            foreach (var metricName in metricNames.Where(name => !destination.ContainsMetric(name)))
+            {
+                destination.MarkFailed(metricName);
+                errors.Add(CreateTargetMetricError(ex, resourceId, metricName));
+            }
             return;
         }
 
-        foreach (var metricName in metricNames)
+        foreach (var metricName in metricNames.Where(name => !destination.ContainsMetric(name)))
         {
-            var singleMetric = new RoutingMetricEvidenceBuilder(resourceType);
             try
             {
                 await QueryMetricSetCoreAsync(
@@ -605,11 +585,11 @@ public class IoTHubService(
                     window,
                     interval,
                     armClient,
-                    singleMetric,
+                    destination,
+                    errors,
                     cancellationToken);
-                destination.Merge(singleMetric.Build());
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException && !cancellationToken.IsCancellationRequested)
             {
                 _logger.LogWarning(
                     ex,
@@ -617,6 +597,7 @@ public class IoTHubService(
                     metricName,
                     resourceId);
                 errors.Add(CreateTargetMetricError(ex, resourceId, metricName));
+                destination.MarkFailed(metricName);
             }
         }
     }
@@ -632,6 +613,7 @@ public class IoTHubService(
         TimeSpan interval,
         ArmClient armClient,
         RoutingMetricEvidenceBuilder builder,
+        List<RoutingDiagnosticError> errors,
         CancellationToken cancellationToken)
     {
         var options = BuildMonitorMetricsOptions(
@@ -642,42 +624,83 @@ public class IoTHubService(
             aggregation,
             filter);
         var metrics = armClient.GetMonitorMetricsAsync(resourceId, options, cancellationToken);
+        var returnedMetricNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         await foreach (var metric in metrics.WithCancellation(cancellationToken))
         {
-            var metricName = metric.Name?.Value ?? metricNames[0];
-            foreach (var series in metric.Timeseries)
+            var metricName = metricNames.FirstOrDefault(name =>
+                string.Equals(name, metric.Name?.Value, StringComparison.OrdinalIgnoreCase));
+            if (metricName is null)
             {
-                var dimensions = GetDimensions(series);
-                switch (aggregation)
+                continue;
+            }
+            returnedMetricNames.Add(metricName);
+            var metricError = GetMetricResponseError(
+                metric, metricName, resourceId, "targetAzureMonitor", "Monitoring Reader");
+            if (metricError is not null)
+            {
+                builder.MarkFailed(metricName);
+                errors.Add(metricError);
+                continue;
+            }
+
+            var metricBuilder = new RoutingMetricEvidenceBuilder(resourceType);
+            try
+            {
+                foreach (var series in metric.Timeseries)
                 {
-                    case "Total":
-                        builder.AddCountSeries(
-                            metricName,
-                            aggregation,
-                            dimensions,
-                            series.Data.Select(point => (point.TimeStamp, point.Total ?? point.Count)));
-                        break;
-                    case "Count":
-                        builder.AddCountSeries(
-                            metricName,
-                            aggregation,
-                            dimensions,
-                            series.Data.Select(point => (point.TimeStamp, point.Count ?? point.Total)));
-                        break;
-                    case "Maximum":
-                        builder.AddMaximumSeries(
-                            metricName,
-                            unit,
-                            dimensions,
-                            series.Data.Select(point => (point.TimeStamp, point.Maximum)));
-                        break;
-                    default:
-                        throw new InvalidOperationException(
-                            $"Unsupported target metric aggregation '{aggregation}'.");
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var dimensions = GetDimensions(series);
+                    switch (aggregation)
+                    {
+                        case "Total":
+                            metricBuilder.AddCountSeries(
+                                metricName,
+                                aggregation,
+                                dimensions,
+                                series.Data.Select(point => (point.TimeStamp, point.Total ?? point.Count)));
+                            break;
+                        case "Count":
+                            metricBuilder.AddCountSeries(
+                                metricName,
+                                aggregation,
+                                dimensions,
+                                series.Data.Select(point => (point.TimeStamp, point.Count ?? point.Total)));
+                            break;
+                        case "Maximum":
+                            metricBuilder.AddMaximumSeries(
+                                metricName,
+                                unit,
+                                dimensions,
+                                series.Data.Select(point => (point.TimeStamp, point.Maximum)));
+                            break;
+                        default:
+                            throw new InvalidOperationException(
+                                $"Unsupported target metric aggregation '{aggregation}'.");
+                    }
                 }
+                metricBuilder.MarkSuccessful(metricName);
+                if (metric.Timeseries.Count >= MetricSeriesLimit)
+                {
+                    metricBuilder.MarkPartial(metricName);
+                    errors.Add(CreateSeriesLimitError(metricName, resourceId, "targetAzureMonitor"));
+                }
+                builder.Merge(metricBuilder.Build());
+            }
+            catch (Exception ex) when (ex is InvalidDataException or OverflowException)
+            {
+                builder.MarkFailed(metricName);
+                errors.Add(CreateTargetMetricError(ex, resourceId, metricName));
             }
         }
+        foreach (var metricName in metricNames.Where(name => !returnedMetricNames.Contains(name)))
+        {
+            builder.MarkFailed(metricName);
+            errors.Add(CreateMissingMetricError(metricName, resourceId, "targetAzureMonitor"));
+        }
     }
+
+    // Monitor defaults to ten series for filtered queries; its REST/SDK top parameter is an Int32.
+    internal const int MetricSeriesLimit = 10000;
 
     internal static ArmResourceGetMonitorMetricsOptions BuildMonitorMetricsOptions(
         string metricNames,
@@ -698,9 +721,67 @@ public class IoTHubService(
         if (!string.IsNullOrEmpty(filter))
         {
             options.Filter = filter;
+            options.Top = MetricSeriesLimit;
         }
         return options;
     }
+
+    private async Task<ArmClient> CreateRoutingArmClientAsync(string? tenant, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            return await CreateArmClientAsync(tenant, cancellationToken: cancellationToken);
+        }
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
+        {
+            // The shared ARM client factory can wrap credential cancellation in a general exception.
+            cancellationToken.ThrowIfCancellationRequested();
+            throw;
+        }
+    }
+
+    private static string BuildEndpointFilter(IReadOnlyList<RoutingEndpointDetails> endpoints)
+    {
+        var filter = string.Join(" or ", endpoints.Select(endpoint =>
+            $"EndpointName eq '{endpoint.Name.Replace("'", "''", StringComparison.Ordinal)}'"));
+        return endpoints.Count == 1 ? filter : $"({filter})";
+    }
+
+    private static RoutingDiagnosticError? GetMetricResponseError(
+        MonitorMetric metric,
+        string metricName,
+        ResourceIdentifier resourceId,
+        string source,
+        string requiredRole) =>
+        // Provider messages can contain resource configuration; retain the code without echoing raw text.
+        (!string.IsNullOrWhiteSpace(metric.ErrorCode) &&
+            !string.Equals(metric.ErrorCode, "Success", StringComparison.OrdinalIgnoreCase)) ||
+        !string.IsNullOrWhiteSpace(metric.ErrorMessage)
+            ? new RoutingDiagnosticError(
+                source, metricName, resourceId.ToString(), 200,
+                string.IsNullOrWhiteSpace(metric.ErrorCode) ||
+                    string.Equals(metric.ErrorCode, "Success", StringComparison.OrdinalIgnoreCase)
+                        ? "MetricQueryFailed" : metric.ErrorCode,
+                requiredRole,
+                $"Azure Monitor reported an error for metric '{metricName}' in a successful HTTP response.")
+            : null;
+
+    private static RoutingDiagnosticError CreateSeriesLimitError(
+        string metricName,
+        ResourceIdentifier resourceId,
+        string source) => new(
+            source, metricName, resourceId.ToString(), 200, "PossibleTruncation", null,
+            $"Metric '{metricName}' reached the requested limit of {MetricSeriesLimit} time series. " +
+            "Returned buckets and window aggregates may be incomplete; missing values must not be treated as zero.");
+
+    private static RoutingDiagnosticError CreateMissingMetricError(
+        string metricName,
+        ResourceIdentifier resourceId,
+        string source) => new(
+            source, metricName, resourceId.ToString(), 200, "MissingMetricResponse", null,
+            $"Azure Monitor did not return the requested metric '{metricName}'. " +
+            "Its availability cannot be determined from this response.");
 
     private async Task<ExistenceResult> GetTargetExistenceAsync(
         ResourceIdentifier resourceId,
@@ -738,7 +819,7 @@ public class IoTHubService(
                     "Reader",
                     "The current target resource existence could not be determined."));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException && !cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(
                 ex,
@@ -887,17 +968,14 @@ public class IoTHubService(
         string resourceGroup,
         string subscription,
         string? tenant,
-        RetryPolicyOptions? retryPolicy,
         CancellationToken cancellationToken)
     {
         var subscriptionResource = await AzureService.GetSubscription(
             subscription,
             tenant,
-            retryPolicy,
-            cancellationToken);
+            cancellationToken: cancellationToken);
         var armClient = await CreateArmClientAsync(
             tenant,
-            retryPolicy,
             cancellationToken: cancellationToken);
         var resourceId = BuildResourceId(
             subscriptionResource.Data.SubscriptionId,
@@ -1118,14 +1196,14 @@ public class IoTHubService(
     }
 
     private static string GetQueryStatus(
-        bool hasValues,
+        bool hasSuccessfulQueries,
         IReadOnlyList<RoutingDiagnosticError> errors)
     {
         if (errors.Count == 0)
         {
             return "queried";
         }
-        if (hasValues)
+        if (hasSuccessfulQueries)
         {
             return "partial";
         }

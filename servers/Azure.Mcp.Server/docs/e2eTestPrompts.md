@@ -782,6 +782,8 @@ The `Interaction` column describes whether a prompt can invoke its tool immediat
 | iothub_routing_endpoint-health | Get the current routing endpoint health for endpoint <endpoint_name> on IoT Hub <hub_name> | none |
 | iothub_routing_endpoint-diagnostics | Show routing endpoint diagnostics evidence for IoT Hub <hub_name> in resource group <resource_group_name> | none |
 | iothub_routing_endpoint-diagnostics | Get routing endpoint diagnostics metrics for IoT Hub <hub_name> from <start_time> through <end_time> | none |
+| iothub_routing_endpoint-diagnostics | Check whether routing endpoint <endpoint_name> on IoT Hub <hub_name> has a missing target, unavailable metrics, or observed delivery failures in the past six hours | none |
+| iothub_routing_endpoint-diagnostics | Show which routing metrics returned no data for IoT Hub <hub_name> without assuming the hub is idle or healthy | none |
 
 ## Azure IoT Operations
 
