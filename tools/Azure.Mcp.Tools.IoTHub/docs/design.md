@@ -501,7 +501,7 @@ Tests verify:
 The integration fixture provisions a Service Bus queue and topic on the same namespace, with
 identity-based IoT Hub routes. Integration tests assert both named endpoints exist instead of accepting
 empty collections. Historical query timestamps are recording variables so playback uses the original
-window. Publishing recordings requires the recording workflow in [recorded tests](../../../docs/recorded-tests.md).
+window. Publishing recordings requires the recording workflow in [recorded tests](https://github.com/microsoft/mcp/blob/main/docs/recorded-tests.md).
 
 ## References
 
