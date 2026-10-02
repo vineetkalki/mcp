@@ -271,6 +271,49 @@ public class IoTHubRoutingServiceTests()
             Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public void BuildArmRequestUri_ResolvesResourcePathAgainstArmEndpoint()
+    {
+        var uri = IoTHubRoutingService.BuildArmRequestUri(
+            ArmEnvironment.AzureGovernment.Endpoint,
+            "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Devices/IotHubs/hub1/routingEndpointsHealth",
+            "2023-06-30");
+
+        Assert.Equal(Uri.UriSchemeHttps, uri.Scheme);
+        Assert.Equal(ArmEnvironment.AzureGovernment.Endpoint.Host, uri.Host);
+        Assert.Equal(
+            "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Devices/IotHubs/hub1/routingEndpointsHealth",
+            uri.AbsolutePath);
+        Assert.Equal("?api-version=2023-06-30", uri.Query);
+    }
+
+    [Fact]
+    public void BuildArmRequestUri_UsesArmNextLinkAsReturned()
+    {
+        const string nextLink =
+            "https://management.azure.com/subscriptions/sub1/next?api-version=2023-06-30&$skiptoken=abc";
+
+        var uri = IoTHubRoutingService.BuildArmRequestUri(
+            ArmEnvironment.AzurePublicCloud.Endpoint,
+            nextLink,
+            apiVersion: null);
+
+        Assert.Equal(nextLink, uri.AbsoluteUri);
+    }
+
+    [Theory]
+    [InlineData("file:///subscriptions/sub1/resourceGroups/rg1")]
+    [InlineData("http://management.azure.com/subscriptions/sub1/next")]
+    [InlineData("https://example.com/subscriptions/sub1/next")]
+    public void BuildArmRequestUri_RejectsLinksOutsideArmEndpoint(string link)
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            IoTHubRoutingService.BuildArmRequestUri(
+                ArmEnvironment.AzurePublicCloud.Endpoint,
+                link,
+                apiVersion: null));
+    }
+
     private static IoTHubRoutingService CreateService(
         HttpMessageHandler handler,
         IAzureService? azureService = null,

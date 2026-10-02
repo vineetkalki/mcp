@@ -882,15 +882,10 @@ public sealed class IoTHubRoutingService(
             cancellationToken.ThrowIfCancellationRequested();
             throw;
         }
-        var managementEndpoint =
-            AzureService.CloudConfiguration.ArmEnvironment.Endpoint.ToString().TrimEnd('/');
-        var url = Uri.TryCreate(resourcePathOrUrl, UriKind.Absolute, out var absoluteUri)
-            ? absoluteUri.ToString()
-            : $"{managementEndpoint}{resourcePathOrUrl}";
-        if (!string.IsNullOrEmpty(apiVersion))
-        {
-            url += $"{(url.Contains('?') ? '&' : '?')}api-version={apiVersion}";
-        }
+        var requestUri = BuildArmRequestUri(
+            AzureService.CloudConfiguration.ArmEnvironment.Endpoint,
+            resourcePathOrUrl,
+            apiVersion);
 
         using var httpClient = _httpClientFactory.CreateClient();
         using var transport = new HttpClientTransport(httpClient);
@@ -903,12 +898,43 @@ public sealed class IoTHubRoutingService(
         var pipeline = HttpPipelineBuilder.Build(options);
         using var request = pipeline.CreateRequest();
         request.Method = RequestMethod.Get;
-        request.Uri.Reset(new Uri(url));
+        request.Uri.Reset(requestUri);
         request.Headers.Add("Accept", "application/json");
         using var response = await pipeline.SendRequestAsync(request, cancellationToken);
         return new ArmGetResult(
             (HttpStatusCode)response.Status,
             response.Content.ToString());
+    }
+
+    internal static Uri BuildArmRequestUri(
+        Uri armEndpoint,
+        string resourcePathOrNextLink,
+        string? apiVersion)
+    {
+        string url;
+        // Classify rooted ARM paths first: on Linux and macOS, Uri.TryCreate parses "/subscriptions/..."
+        // as an absolute file:// URI.
+        if (resourcePathOrNextLink.StartsWith('/'))
+        {
+            url = $"{armEndpoint.AbsoluteUri.TrimEnd('/')}{resourcePathOrNextLink}";
+        }
+        else if (Uri.TryCreate(resourcePathOrNextLink, UriKind.Absolute, out var nextLink)
+            && nextLink.Scheme == Uri.UriSchemeHttps
+            && string.Equals(nextLink.Host, armEndpoint.Host, StringComparison.OrdinalIgnoreCase))
+        {
+            url = nextLink.AbsoluteUri;
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                "Azure Resource Manager returned a link outside the Azure Resource Manager endpoint.");
+        }
+
+        if (!string.IsNullOrEmpty(apiVersion))
+        {
+            url += $"{(url.Contains('?') ? '&' : '?')}api-version={apiVersion}";
+        }
+        return new Uri(url);
     }
 
     internal static bool IsResourceNotFoundResponse(
