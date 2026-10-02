@@ -4,7 +4,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Azure.Mcp.Tools.IoTHub.Commands.IoTHub;
-using Azure.Mcp.Tools.IoTHub.Commands.Routing;
 using Azure.Mcp.Tools.IoTHub.Models;
 
 namespace Azure.Mcp.Tools.IoTHub.Commands;
@@ -30,22 +29,22 @@ namespace Azure.Mcp.Tools.IoTHub.Commands;
 [JsonSerializable(typeof(JsonElement))]
 [JsonSerializable(typeof(List<JsonElement>))]
 [JsonSerializable(typeof(object))]
-[JsonSerializable(typeof(double))]
-[JsonSerializable(typeof(RoutingEndpointDetails))]
-[JsonSerializable(typeof(long))]
-[JsonSerializable(typeof(RoutingDiagnosticError))]
-[JsonSerializable(typeof(RoutingEndpointDiagnostic))]
-[JsonSerializable(typeof(RoutingEndpointDiagnostics))]
+[JsonSerializable(typeof(RoutingEndpointHealthResult))]
 [JsonSerializable(typeof(RoutingEndpointHealthSnapshot))]
-[JsonSerializable(typeof(RoutingHubEmitted))]
-[JsonSerializable(typeof(RoutingMetricEvidence))]
-[JsonSerializable(typeof(string))]
+[JsonSerializable(typeof(RoutingEndpointDiagnostics))]
+[JsonSerializable(typeof(RoutingEndpointDiagnostic))]
+[JsonSerializable(typeof(RoutingEndpointDetails))]
 [JsonSerializable(typeof(RoutingObservationWindow))]
-[JsonSerializable(typeof(RoutingTargetEmitted))]
 [JsonSerializable(typeof(RoutingTargetInfo))]
-[JsonSerializable(typeof(RoutingEndpointHealthGetResult))]
+[JsonSerializable(typeof(RoutingHubEmitted))]
+[JsonSerializable(typeof(RoutingTargetEmitted))]
+[JsonSerializable(typeof(RoutingMetricEvidence))]
+[JsonSerializable(typeof(RoutingDiagnosticError))]
 [JsonSerializable(typeof(EndpointHealthDataListResult))]
 [JsonSerializable(typeof(EndpointHealthData))]
+[JsonSerializable(typeof(double))]
+[JsonSerializable(typeof(long))]
+[JsonSerializable(typeof(string))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]

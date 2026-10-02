@@ -3,10 +3,8 @@
 
 using System.Net;
 using System.Security;
-using System.Xml;
 using Azure.Core;
 using Azure.Mcp.Core.Services.Azure;
-using Azure.Mcp.Tools.IoTHub.Commands;
 using Azure.Mcp.Tools.IoTHub.Services;
 using Azure.ResourceManager;
 using Microsoft.Extensions.Logging;
@@ -55,53 +53,6 @@ public class IoTHubRoutingServiceTests()
             });
         Assert.Equal(2, handler.RequestUris.Count);
         Assert.Equal(nextLink, handler.RequestUris[1]?.ToString());
-    }
-
-    [Fact]
-    public void ResolveDiagnosticsWindow_DefaultsToPreviousTwentyFourHours()
-    {
-        var currentTime = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
-
-        var result = IoTHubValidation.ResolveDiagnosticsWindow(
-            null,
-            null,
-            null,
-            currentTime);
-
-        Assert.Equal(currentTime.AddHours(-24), result.StartTime);
-        Assert.Equal(currentTime, result.EndTime);
-        Assert.Equal(TimeSpan.FromHours(1), result.Interval);
-    }
-
-    [Theory]
-    [InlineData(12, "PT1M")]
-    [InlineData(24, "PT5M")]
-    [InlineData(720, "PT1H")]
-    public void ResolveDiagnosticsWindow_AcceptsAtMostSevenHundredTwentyBuckets(
-        int durationHours,
-        string interval)
-    {
-        var startTime = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
-
-        var result = IoTHubValidation.ResolveDiagnosticsWindow(
-            startTime,
-            startTime.AddHours(durationHours),
-            interval);
-
-        Assert.Equal(XmlConvert.ToTimeSpan(interval), result.Interval);
-    }
-
-    [Fact]
-    public void ResolveDiagnosticsWindow_RejectsMoreThanSevenHundredTwentyBuckets()
-    {
-        var currentTime = new DateTimeOffset(2026, 8, 1, 12, 0, 0, TimeSpan.Zero);
-
-        var exception = Assert.Throws<ArgumentException>(() =>
-            IoTHubValidation.ResolveDiagnosticsWindow(null, null, "PT1M", currentTime));
-
-        Assert.Contains("produce 1440 buckets", exception.Message);
-        Assert.Contains("maximum is 720", exception.Message);
-        Assert.Contains("PT5M or larger", exception.Message);
     }
 
     [Fact]

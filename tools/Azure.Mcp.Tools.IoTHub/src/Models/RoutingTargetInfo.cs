@@ -3,7 +3,7 @@
 
 namespace Azure.Mcp.Tools.IoTHub.Models;
 
-public sealed record RoutingTargetInfo(
+public record RoutingTargetInfo(
     string ResolutionStatus,
     string? ResourceId = null,
     string? ResourceType = null,

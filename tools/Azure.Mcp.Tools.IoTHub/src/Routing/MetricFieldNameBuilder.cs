@@ -5,7 +5,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace Azure.Mcp.Tools.IoTHub.Services;
+namespace Azure.Mcp.Tools.IoTHub.Routing;
 
 internal static class MetricFieldNameBuilder
 {

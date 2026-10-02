@@ -3,7 +3,7 @@
 
 namespace Azure.Mcp.Tools.IoTHub.Models;
 
-public sealed record RoutingDiagnosticError(
+public record RoutingDiagnosticError(
     string Source,
     string Operation,
     string? ResourceId,

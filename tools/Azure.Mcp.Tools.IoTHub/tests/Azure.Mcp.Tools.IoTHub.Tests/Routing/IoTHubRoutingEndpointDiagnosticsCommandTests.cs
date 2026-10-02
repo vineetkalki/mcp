@@ -6,6 +6,7 @@ using Azure.Mcp.Tests.Commands;
 using Azure.Mcp.Tools.IoTHub.Commands;
 using Azure.Mcp.Tools.IoTHub.Commands.Routing;
 using Azure.Mcp.Tools.IoTHub.Models;
+using Azure.Mcp.Tools.IoTHub.Routing;
 using Azure.Mcp.Tools.IoTHub.Services;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -13,8 +14,8 @@ using Xunit;
 
 namespace Azure.Mcp.Tools.IoTHub.Tests.Routing;
 
-public class RoutingEndpointDiagnosticsCommandTests
-    : SubscriptionCommandUnitTestsBase<RoutingEndpointDiagnosticsCommand, IIoTHubRoutingService>
+public class IoTHubRoutingEndpointDiagnosticsCommandTests
+    : SubscriptionCommandUnitTestsBase<IoTHubRoutingEndpointDiagnosticsCommand, IIoTHubRoutingService>
 {
     [Fact]
     public async Task ExecuteAsync_ReportsOperationTimeout()

@@ -1,7 +1,7 @@
 # Azure MCP CLI Command Reference
 
 > [!IMPORTANT]
-> The Azure MCP Server has two modes: MCP Server mode and CLI mode. When you start the MCP Server with `azmcp server start` that will expose an endpoint for MCP Client communication. The `azmcp` CLI also exposes all of the tools via a command line interface, i.e. `azmcp subscription list`. In this document, "command" refers to CLI commands (e.g., `azmcp storage account list`), while "tool" refers to MCP server tools that can be invoked by MCP clients.
+> The Azure MCP Server has two modes: MCP Server mode and CLI mode.  When you start the MCP Server with `azmcp server start` that will expose an endpoint for MCP Client communication. The `azmcp` CLI also exposes all of the tools via a command line interface, i.e. `azmcp subscription list`.  In this document, "command" refers to CLI commands (e.g., `azmcp storage account list`), while "tool" refers to MCP server tools that can be invoked by MCP clients.
 
 ## Global Options
 
@@ -3252,7 +3252,7 @@ through per-metric availability metadata. Missing metric values do not mean zero
 metrics describe the parent resource and can include other clients; they do not prove endpoint
 delivery. Current target existence is separate from historical metrics, with any existence-check
 error under `target.error`. These routing tools do not determine overall hub health or device ingress
-health and use Azure SDK retry defaults without retry-policy options. Each routing operation has a
+health. Each routing operation has a
 100-second timeout covering all requests and retries. Expiration returns HTTP 408 rather than
 presenting incomplete work as a successful result; caller cancellation is preserved.
 

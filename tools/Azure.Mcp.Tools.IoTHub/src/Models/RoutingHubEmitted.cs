@@ -3,6 +3,6 @@
 
 namespace Azure.Mcp.Tools.IoTHub.Models;
 
-public sealed record RoutingHubEmitted(
+public record RoutingHubEmitted(
     RoutingMetricEvidence RoutingMetrics,
     List<RoutingDiagnosticError> Errors);

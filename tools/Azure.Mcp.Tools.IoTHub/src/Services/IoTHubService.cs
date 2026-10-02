@@ -5,18 +5,16 @@ using Azure.Core;
 using Azure.Mcp.Core.Services.Azure;
 using Azure.Mcp.Tools.IoTHub.Commands;
 using Azure.Mcp.Tools.IoTHub.Models;
+using Azure.Mcp.Tools.IoTHub.Routing;
 using Azure.ResourceManager.Resources;
 using Microsoft.Extensions.Logging;
 
 namespace Azure.Mcp.Tools.IoTHub.Services;
 
-public class IoTHubService(
-    IAzureService azureService,
-    ILogger<IoTHubService> logger)
+public class IoTHubService(IAzureService azureService, ILogger<IoTHubService> logger)
     : BaseAzureService(azureService), IIoTHubService
 {
-    private readonly ILogger<IoTHubService> _logger =
-        logger ?? throw new ArgumentNullException(nameof(logger));
+    private readonly ILogger<IoTHubService> _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
     public async Task<IoTHubDescription> GetIoTHub(
         string hubName,
@@ -47,12 +45,7 @@ public class IoTHubService(
         }
         catch (Exception ex)
         {
-            _logger.LogError(
-                ex,
-                "Error retrieving IoT Hub '{HubName}' in resource group '{ResourceGroup}' and subscription '{Subscription}'.",
-                hubName,
-                resourceGroup,
-                subscription);
+            _logger.LogError(ex, "Error retrieving IoT Hub '{HubName}' in resource group '{ResourceGroup}' and subscription '{Subscription}'", hubName, resourceGroup, subscription);
             throw;
         }
     }
@@ -60,6 +53,7 @@ public class IoTHubService(
     private static IoTHubDescription ConvertToIoTHubDescription(GenericResourceData hub)
     {
         var properties = hub.Properties?.ToObjectFromJson(IoTHubJsonContext.Default.IoTHubProperties);
+
         return new IoTHubDescription(
             hub.Id.ToString(),
             hub.Name,
@@ -70,6 +64,7 @@ public class IoTHubService(
             hub.Sku?.Capacity ?? 0,
             properties?.State ?? string.Empty,
             properties?.HostName ?? string.Empty,
-            RoutingEndpointMapper.ConvertToRoutingEndpointDetailsList(properties?.Routing?.Endpoints));
+            RoutingEndpointMapper.ConvertToRoutingEndpointDetailsList(properties?.Routing?.Endpoints)
+        );
     }
 }

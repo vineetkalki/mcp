@@ -3,7 +3,7 @@
 
 namespace Azure.Mcp.Tools.IoTHub.Models;
 
-public sealed record RoutingEndpointDiagnostic(
+public record RoutingEndpointDiagnostic(
     string EndpointId,
     string Name,
     string EndpointType,

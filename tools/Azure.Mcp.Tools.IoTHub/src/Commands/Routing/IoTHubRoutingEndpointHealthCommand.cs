@@ -4,6 +4,7 @@
 using System.Net;
 using Azure;
 using Azure.Mcp.Core.Services.Azure.Subscription;
+using Azure.Mcp.Tools.IoTHub.Models;
 using Azure.Mcp.Tools.IoTHub.Options.Routing;
 using Azure.Mcp.Tools.IoTHub.Services;
 using Microsoft.Extensions.Logging;
@@ -30,16 +31,16 @@ namespace Azure.Mcp.Tools.IoTHub.Commands.Routing;
     ReadOnly = true,
     Secret = false,
     LocalRequired = false)]
-public sealed class RoutingEndpointHealthGetCommand(
-    ILogger<RoutingEndpointHealthGetCommand> logger,
+public sealed class IoTHubRoutingEndpointHealthCommand(
+    ILogger<IoTHubRoutingEndpointHealthCommand> logger,
     IIoTHubRoutingService service,
     ISubscriptionResolver subscriptionResolver)
-    : BaseIoTHubCommand<RoutingEndpointHealthGetOptions, RoutingEndpointHealthGetResult>(subscriptionResolver)
+    : BaseIoTHubCommand<IoTHubRoutingEndpointHealthOptions, RoutingEndpointHealthResult>(subscriptionResolver)
 {
-    private readonly ILogger<RoutingEndpointHealthGetCommand> _logger = logger;
+    private readonly ILogger<IoTHubRoutingEndpointHealthCommand> _logger = logger;
     private readonly IIoTHubRoutingService _service = service;
 
-    public override void ValidateOptions(RoutingEndpointHealthGetOptions options, ValidationResult validationResult)
+    public override void ValidateOptions(IoTHubRoutingEndpointHealthOptions options, ValidationResult validationResult)
     {
         base.ValidateOptions(options, validationResult);
         IoTHubValidation.ValidateHubName(options.HubName, validationResult);
@@ -47,7 +48,7 @@ public sealed class RoutingEndpointHealthGetCommand(
 
     public override async Task<CommandResponse> ExecuteAsync(
         CommandContext context,
-        RoutingEndpointHealthGetOptions options,
+        IoTHubRoutingEndpointHealthOptions options,
         CancellationToken cancellationToken)
     {
         try
@@ -62,8 +63,8 @@ public sealed class RoutingEndpointHealthGetCommand(
                 ?? [];
 
             context.Response.Results = ResponseResult.Create(
-                new RoutingEndpointHealthGetResult(endpoints),
-                IoTHubJsonContext.Default.RoutingEndpointHealthGetResult);
+                new RoutingEndpointHealthResult(endpoints),
+                IoTHubJsonContext.Default.RoutingEndpointHealthResult);
         }
         catch (Exception ex)
         {

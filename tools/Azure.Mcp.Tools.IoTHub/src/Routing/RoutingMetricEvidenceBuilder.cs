@@ -6,7 +6,7 @@ using System.Text.Json;
 using Azure.Mcp.Tools.IoTHub.Commands;
 using Azure.Mcp.Tools.IoTHub.Models;
 
-namespace Azure.Mcp.Tools.IoTHub.Services;
+namespace Azure.Mcp.Tools.IoTHub.Routing;
 
 internal sealed class RoutingMetricEvidenceBuilder(string metricNamespace)
 {

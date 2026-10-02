@@ -11,6 +11,7 @@ using Azure.Core.Pipeline;
 using Azure.Mcp.Core.Services.Azure;
 using Azure.Mcp.Tools.IoTHub.Commands;
 using Azure.Mcp.Tools.IoTHub.Models;
+using Azure.Mcp.Tools.IoTHub.Routing;
 using Azure.ResourceManager;
 using Azure.ResourceManager.Monitor;
 using Azure.ResourceManager.Monitor.Models;
@@ -20,7 +21,7 @@ using Microsoft.Mcp.Core.Helpers;
 
 namespace Azure.Mcp.Tools.IoTHub.Services;
 
-public sealed class IoTHubRoutingService(
+public class IoTHubRoutingService(
     IAzureService azureService,
     IHttpClientFactory httpClientFactory,
     ILogger<IoTHubRoutingService> logger)
@@ -131,7 +132,7 @@ public sealed class IoTHubRoutingService(
         CancellationToken cancellationToken = default)
     {
         ValidateInputs(hubName, resourceGroup, subscription);
-        var resolvedWindow = IoTHubValidation.ResolveDiagnosticsWindow(startTime, endTime, interval);
+        var resolvedWindow = RoutingDiagnosticsWindow.Resolve(startTime, endTime, interval);
         var window = new ObservationWindow(resolvedWindow.StartTime, resolvedWindow.EndTime);
 
         try

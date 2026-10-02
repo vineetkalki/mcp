@@ -6,7 +6,7 @@ using Microsoft.Mcp.Core.Options;
 
 namespace Azure.Mcp.Tools.IoTHub.Options.Routing;
 
-public sealed class RoutingEndpointDiagnosticsOptions() : ISubscriptionOption
+public sealed class IoTHubRoutingEndpointDiagnosticsOptions : ISubscriptionOption
 {
     [Option(Description = "The name of the IoT Hub.")]
     public required string HubName { get; set; }

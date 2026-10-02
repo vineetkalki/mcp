@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace Azure.Mcp.Tools.IoTHub.Models;
 
-public sealed record RoutingTargetEmitted(
+public record RoutingTargetEmitted(
     string QueryStatus,
     string MetricScope,
     string? MetricNamespace,

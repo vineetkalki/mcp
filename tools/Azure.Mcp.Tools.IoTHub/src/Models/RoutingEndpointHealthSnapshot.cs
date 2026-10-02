@@ -3,7 +3,7 @@
 
 namespace Azure.Mcp.Tools.IoTHub.Models;
 
-public sealed record RoutingEndpointHealthSnapshot(
+public record RoutingEndpointHealthSnapshot(
     string EndpointId,
     string EndpointName,
     string? HealthStatus,

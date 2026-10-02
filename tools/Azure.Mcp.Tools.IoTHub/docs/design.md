@@ -81,7 +81,7 @@ The backing REST operation returns a current snapshot, so this tool takes no tim
 
 ```jsonc
 {
-  "value": [
+  "endpoints": [
     {
       "endpointId": "id1",
       "endpointName": "orders-eventhub",

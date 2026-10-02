@@ -4,7 +4,7 @@
 using Azure.Core;
 using Azure.Mcp.Tools.IoTHub.Models;
 
-namespace Azure.Mcp.Tools.IoTHub.Services;
+namespace Azure.Mcp.Tools.IoTHub.Routing;
 
 internal static class RoutingEndpointMapper
 {

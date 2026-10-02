@@ -5,7 +5,7 @@ namespace Azure.Mcp.Tools.IoTHub.Models;
 
 // Shared deserialization shape for every routing custom-endpoint kind. Kind-specific fields stay null
 // when absent. Intentionally omits connection strings / keys / identity so secrets are never deserialized.
-internal sealed class RoutingEndpointProperties
+public class RoutingEndpointProperties
 {
     public string? Id { get; set; }
 

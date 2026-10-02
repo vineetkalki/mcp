@@ -16,7 +16,7 @@ using Xunit;
 
 namespace Azure.Mcp.Tools.IoTHub.Tests.Services;
 
-public class RoutingDiagnosticsServiceTests()
+public class IoTHubRoutingServiceDiagnosticsTests()
 {
     private const string Subscription = "11111111-1111-1111-1111-111111111111";
     private const string HubId = $"/subscriptions/{Subscription}/resourceGroups/rg1/providers/Microsoft.Devices/IotHubs/hub1";

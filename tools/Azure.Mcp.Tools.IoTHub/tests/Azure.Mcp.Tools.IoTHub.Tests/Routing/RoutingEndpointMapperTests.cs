@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 using Azure.Mcp.Tools.IoTHub.Models;
-using Azure.Mcp.Tools.IoTHub.Services;
+using Azure.Mcp.Tools.IoTHub.Routing;
 using Xunit;
 
-namespace Azure.Mcp.Tools.IoTHub.Tests.Services;
+namespace Azure.Mcp.Tools.IoTHub.Tests.Routing;
 
 public class RoutingEndpointMapperTests()
 {

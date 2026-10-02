@@ -4,7 +4,7 @@
 namespace Azure.Mcp.Tools.IoTHub.Models;
 
 // Health data for a single routing endpoint from the routingEndpointsHealth REST API.
-internal sealed class EndpointHealthData()
+public class EndpointHealthData
 {
     public string? EndpointId { get; set; }
     public string? HealthStatus { get; set; }

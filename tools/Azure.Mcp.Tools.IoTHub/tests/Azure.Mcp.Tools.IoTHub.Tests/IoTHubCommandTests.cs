@@ -119,11 +119,11 @@ public class IoTHubCommandTests(
         });
 
         Assert.NotNull(result);
-        var value = result.Value.AssertProperty("value");
-        Assert.Equal(JsonValueKind.Array, value.ValueKind);
-        Assert.Contains(value.EnumerateArray(), endpoint => endpoint.GetProperty("endpointName").GetString() == "sbqueue-endpoint");
-        Assert.Contains(value.EnumerateArray(), endpoint => endpoint.GetProperty("endpointName").GetString() == "sbtopic-endpoint");
-        foreach (var endpoint in value.EnumerateArray())
+        var endpoints = result.Value.AssertProperty("endpoints");
+        Assert.Equal(JsonValueKind.Array, endpoints.ValueKind);
+        Assert.Contains(endpoints.EnumerateArray(), endpoint => endpoint.GetProperty("endpointName").GetString() == "sbqueue-endpoint");
+        Assert.Contains(endpoints.EnumerateArray(), endpoint => endpoint.GetProperty("endpointName").GetString() == "sbtopic-endpoint");
+        foreach (var endpoint in endpoints.EnumerateArray())
         {
             Assert.Equal(JsonValueKind.String, endpoint.GetProperty("endpointId").ValueKind);
             Assert.Equal(JsonValueKind.String, endpoint.GetProperty("endpointName").ValueKind);

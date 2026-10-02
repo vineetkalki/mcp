@@ -13,8 +13,8 @@ using Xunit;
 
 namespace Azure.Mcp.Tools.IoTHub.Tests.Routing;
 
-public class RoutingEndpointHealthGetCommandTests
-    : SubscriptionCommandUnitTestsBase<RoutingEndpointHealthGetCommand, IIoTHubRoutingService>
+public class IoTHubRoutingEndpointHealthCommandTests
+    : SubscriptionCommandUnitTestsBase<IoTHubRoutingEndpointHealthCommand, IIoTHubRoutingService>
 {
     [Fact]
     public void Constructor_InitializesCommandCorrectly()
@@ -79,8 +79,8 @@ public class RoutingEndpointHealthGetCommandTests
 
         var result = ValidateAndDeserializeResponse(
             response,
-            IoTHubJsonContext.Default.RoutingEndpointHealthGetResult);
-        var endpoint = Assert.Single(result.Value);
+            IoTHubJsonContext.Default.RoutingEndpointHealthResult);
+        var endpoint = Assert.Single(result.Endpoints);
         Assert.Equal("endpoint-id", endpoint.EndpointId);
         Assert.Equal("endpoint1", endpoint.EndpointName);
         Assert.Equal("unhealthy", endpoint.HealthStatus);

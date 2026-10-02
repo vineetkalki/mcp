@@ -3,6 +3,6 @@
 
 namespace Azure.Mcp.Tools.IoTHub.Models;
 
-public sealed record RoutingEndpointDiagnostics(
+public record RoutingEndpointDiagnostics(
     RoutingObservationWindow ObservationWindow,
     List<RoutingEndpointDiagnostic> Endpoints);

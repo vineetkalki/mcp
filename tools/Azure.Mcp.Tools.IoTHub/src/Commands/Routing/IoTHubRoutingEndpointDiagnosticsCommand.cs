@@ -6,6 +6,7 @@ using Azure;
 using Azure.Mcp.Core.Services.Azure.Subscription;
 using Azure.Mcp.Tools.IoTHub.Models;
 using Azure.Mcp.Tools.IoTHub.Options.Routing;
+using Azure.Mcp.Tools.IoTHub.Routing;
 using Azure.Mcp.Tools.IoTHub.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Mcp.Core.Commands;
@@ -35,22 +36,22 @@ namespace Azure.Mcp.Tools.IoTHub.Commands.Routing;
     ReadOnly = true,
     Secret = false,
     LocalRequired = false)]
-public sealed class RoutingEndpointDiagnosticsCommand(
-    ILogger<RoutingEndpointDiagnosticsCommand> logger,
+public sealed class IoTHubRoutingEndpointDiagnosticsCommand(
+    ILogger<IoTHubRoutingEndpointDiagnosticsCommand> logger,
     IIoTHubRoutingService service,
     ISubscriptionResolver subscriptionResolver)
-    : BaseIoTHubCommand<RoutingEndpointDiagnosticsOptions, RoutingEndpointDiagnostics>(subscriptionResolver)
+    : BaseIoTHubCommand<IoTHubRoutingEndpointDiagnosticsOptions, RoutingEndpointDiagnostics>(subscriptionResolver)
 {
-    private readonly ILogger<RoutingEndpointDiagnosticsCommand> _logger = logger;
+    private readonly ILogger<IoTHubRoutingEndpointDiagnosticsCommand> _logger = logger;
     private readonly IIoTHubRoutingService _service = service;
 
     public override void ValidateOptions(
-        RoutingEndpointDiagnosticsOptions options,
+        IoTHubRoutingEndpointDiagnosticsOptions options,
         ValidationResult validationResult)
     {
         base.ValidateOptions(options, validationResult);
         IoTHubValidation.ValidateHubName(options.HubName, validationResult);
-        IoTHubValidation.ValidateDiagnosticsWindow(
+        RoutingDiagnosticsWindow.Validate(
             options.StartTime,
             options.EndTime,
             options.Interval,
@@ -59,7 +60,7 @@ public sealed class RoutingEndpointDiagnosticsCommand(
 
     public override async Task<CommandResponse> ExecuteAsync(
         CommandContext context,
-        RoutingEndpointDiagnosticsOptions options,
+        IoTHubRoutingEndpointDiagnosticsOptions options,
         CancellationToken cancellationToken)
     {
         try

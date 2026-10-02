@@ -4,7 +4,7 @@
 namespace Azure.Mcp.Tools.IoTHub.Models;
 
 // One routing endpoint's non-secret configuration.
-public sealed record RoutingEndpointDetails(
+public record RoutingEndpointDetails(
     string Name,
     string EndpointType,
     string? EndpointResourceName,
