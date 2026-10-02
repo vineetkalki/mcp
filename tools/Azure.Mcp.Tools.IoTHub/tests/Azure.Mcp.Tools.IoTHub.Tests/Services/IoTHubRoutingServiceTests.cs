@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System.Net;
+using System.Security;
 using System.Xml;
 using Azure.Core;
 using Azure.Mcp.Core.Services.Azure;
@@ -275,7 +276,7 @@ public class IoTHubRoutingServiceTests()
     public void BuildArmRequestUri_ResolvesResourcePathAgainstArmEndpoint()
     {
         var uri = IoTHubRoutingService.BuildArmRequestUri(
-            ArmEnvironment.AzureGovernment.Endpoint,
+            ArmEnvironment.AzureGovernment,
             "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Devices/IotHubs/hub1/routingEndpointsHealth",
             "2023-06-30");
 
@@ -294,7 +295,7 @@ public class IoTHubRoutingServiceTests()
             "https://management.azure.com/subscriptions/sub1/next?api-version=2023-06-30&$skiptoken=abc";
 
         var uri = IoTHubRoutingService.BuildArmRequestUri(
-            ArmEnvironment.AzurePublicCloud.Endpoint,
+            ArmEnvironment.AzurePublicCloud,
             nextLink,
             apiVersion: null);
 
@@ -305,11 +306,12 @@ public class IoTHubRoutingServiceTests()
     [InlineData("file:///subscriptions/sub1/resourceGroups/rg1")]
     [InlineData("http://management.azure.com/subscriptions/sub1/next")]
     [InlineData("https://example.com/subscriptions/sub1/next")]
+    [InlineData("https://management.usgovcloudapi.net/subscriptions/sub1/next")]
     public void BuildArmRequestUri_RejectsLinksOutsideArmEndpoint(string link)
     {
-        Assert.Throws<InvalidOperationException>(() =>
+        Assert.Throws<SecurityException>(() =>
             IoTHubRoutingService.BuildArmRequestUri(
-                ArmEnvironment.AzurePublicCloud.Endpoint,
+                ArmEnvironment.AzurePublicCloud,
                 link,
                 apiVersion: null));
     }

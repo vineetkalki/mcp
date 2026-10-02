@@ -16,6 +16,7 @@ using Azure.ResourceManager.Monitor;
 using Azure.ResourceManager.Monitor.Models;
 using Azure.ResourceManager.Resources;
 using Microsoft.Extensions.Logging;
+using Microsoft.Mcp.Core.Helpers;
 
 namespace Azure.Mcp.Tools.IoTHub.Services;
 
@@ -883,7 +884,7 @@ public sealed class IoTHubRoutingService(
             throw;
         }
         var requestUri = BuildArmRequestUri(
-            AzureService.CloudConfiguration.ArmEnvironment.Endpoint,
+            AzureService.CloudConfiguration.ArmEnvironment,
             resourcePathOrUrl,
             apiVersion);
 
@@ -907,33 +908,27 @@ public sealed class IoTHubRoutingService(
     }
 
     internal static Uri BuildArmRequestUri(
-        Uri armEndpoint,
+        ArmEnvironment armEnvironment,
         string resourcePathOrNextLink,
         string? apiVersion)
     {
-        string url;
         // Classify rooted ARM paths first: on Linux and macOS, Uri.TryCreate parses "/subscriptions/..."
         // as an absolute file:// URI.
-        if (resourcePathOrNextLink.StartsWith('/'))
-        {
-            url = $"{armEndpoint.AbsoluteUri.TrimEnd('/')}{resourcePathOrNextLink}";
-        }
-        else if (Uri.TryCreate(resourcePathOrNextLink, UriKind.Absolute, out var nextLink)
-            && nextLink.Scheme == Uri.UriSchemeHttps
-            && string.Equals(nextLink.Host, armEndpoint.Host, StringComparison.OrdinalIgnoreCase))
-        {
-            url = nextLink.AbsoluteUri;
-        }
-        else
-        {
-            throw new InvalidOperationException(
-                "Azure Resource Manager returned a link outside the Azure Resource Manager endpoint.");
-        }
-
+        var url = resourcePathOrNextLink.StartsWith('/')
+            ? $"{armEnvironment.Endpoint.AbsoluteUri.TrimEnd('/')}{resourcePathOrNextLink}"
+            : resourcePathOrNextLink;
         if (!string.IsNullOrEmpty(apiVersion))
         {
             url += $"{(url.Contains('?') ? '&' : '?')}api-version={apiVersion}";
         }
+
+        // Initial requests and ARM continuation links must both target the configured cloud's ARM host
+        // before the bearer token is attached.
+        EndpointValidator.ValidateAzureServiceEndpoint(
+            endpoint: url,
+            serviceType: "arm",
+            armEnvironment: armEnvironment,
+            executingToolNamespaceName: "iothub");
         return new Uri(url);
     }
 
