@@ -14,8 +14,24 @@ using Xunit;
 namespace Azure.Mcp.Tools.IoTHub.Tests.Routing;
 
 public class RoutingEndpointDiagnosticsCommandTests
-    : SubscriptionCommandUnitTestsBase<RoutingEndpointDiagnosticsCommand, IIoTHubService>
+    : SubscriptionCommandUnitTestsBase<RoutingEndpointDiagnosticsCommand, IIoTHubRoutingService>
 {
+    [Fact]
+    public async Task ExecuteAsync_ReportsOperationTimeout()
+    {
+        Service.GetRoutingEndpointDiagnostics(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<string?>(), Arg.Any<DateTimeOffset?>(), Arg.Any<DateTimeOffset?>(),
+            Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new TimeoutException("Routing diagnostics operation timed out."));
+
+        var response = await ExecuteCommandAsync(
+            "--subscription sub123 --resource-group rg1 --hub-name hub1");
+
+        Assert.Equal(HttpStatusCode.RequestTimeout, response.Status);
+        Assert.Contains("timed out", response.Message);
+    }
+
     [Fact]
     public void Constructor_InitializesCommandCorrectly()
     {

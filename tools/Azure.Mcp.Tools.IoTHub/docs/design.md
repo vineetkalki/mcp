@@ -74,7 +74,6 @@ Inputs:
 | `--hub-name` | Yes | IoT Hub name. |
 | `--endpoint-name` | No | Return one configured custom endpoint. If omitted, return all records. |
 | `--tenant` | No | Tenant used for Azure authentication. |
-| `--retry-*` | No | Standard retry-policy options. |
 
 The backing REST operation returns a current snapshot, so this tool takes no time-range options.
 
@@ -145,7 +144,6 @@ Inputs:
 | `--end-time` | Paired | Inclusive UTC-normalized end time. Must be supplied with `--start-time`. |
 | `--interval` | No | Azure Monitor bucket size. Defaults to `PT1H`. |
 | `--tenant` | No | Tenant used for Azure authentication. |
-| `--retry-*` | No | Standard retry-policy options. |
 
 If neither timestamp is supplied, the effective window is the 24 hours ending when the command begins.
 If either timestamp is supplied, both are required. The maximum window remains 30 days. Supported
@@ -415,6 +413,15 @@ Field-presence rules:
   observation window.
 
 Both routing commands use Azure SDK retry defaults and expose no retry-policy options.
+Each operation has a 100-second budget covering hub lookup, ARM requests, metric queries, and
+retries. Expiration returns a timeout error (HTTP 408), not a successful partial result; caller
+cancellation remains cancellation. Completed operations still retain per-source partial evidence
+when individual queries fail.
+
+Routing orchestration lives in `IoTHubRoutingService`, separate from hub and device services.
+The hub and routing services share endpoint conversion through `RoutingEndpointMapper`.
+Raw ARM reads use an Azure.Core pipeline with factory-created HTTP transport, cloud-specific ARM
+authentication, and SDK-default retries; this transport also supports recorded-test playback.
 
 Parent-resource metrics may include sibling endpoints and other clients. Even successful target
 requests do not prove delivery from this IoT Hub. These tools do not query device ingress, ingress

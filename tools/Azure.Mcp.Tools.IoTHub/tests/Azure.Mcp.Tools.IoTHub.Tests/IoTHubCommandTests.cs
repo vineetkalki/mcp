@@ -65,20 +65,26 @@ public class IoTHubCommandTests(
         // during Record, so relying on it would break playback in CI.
         var hubName = Settings.ResourceBaseName;
 
-        await CallToolAsync("iothub_device_list", new()
-        {
-            { "hub-name", hubName },
-            { "resource-group", Settings.ResourceGroupName },
-            { "subscription", Settings.SubscriptionId }
-        });
-
-        await CallToolAsync("iothub_device_list", new()
+        var devices = await CallToolAsync("iothub_device_list", new()
         {
             { "hub-name", hubName },
             { "resource-group", Settings.ResourceGroupName },
             { "subscription", Settings.SubscriptionId },
+            { "tenant", Settings.TenantId }
+        });
+        Assert.NotNull(devices);
+        Assert.Equal(JsonValueKind.Array, devices.Value.AssertProperty("devices").ValueKind);
+
+        var limitedDevices = await CallToolAsync("iothub_device_list", new()
+        {
+            { "hub-name", hubName },
+            { "resource-group", Settings.ResourceGroupName },
+            { "subscription", Settings.SubscriptionId },
+            { "tenant", Settings.TenantId },
             { "max-count", 2 }
         });
+        Assert.NotNull(limitedDevices);
+        Assert.InRange(limitedDevices.Value.AssertProperty("devices").GetArrayLength(), 0, 2);
     }
 
     [Fact]

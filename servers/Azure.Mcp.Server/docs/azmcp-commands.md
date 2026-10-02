@@ -3252,7 +3252,9 @@ through per-metric availability metadata. Missing metric values do not mean zero
 metrics describe the parent resource and can include other clients; they do not prove endpoint
 delivery. Current target existence is separate from historical metrics, with any existence-check
 error under `target.error`. These routing tools do not determine overall hub health or device ingress
-health and use Azure SDK retry defaults without retry-policy options.
+health and use Azure SDK retry defaults without retry-policy options. Each routing operation has a
+100-second timeout covering all requests and retries. Expiration returns HTTP 408 rather than
+presenting incomplete work as a successful result; caller cancellation is preserved.
 
 ### Azure IoT Operations
 

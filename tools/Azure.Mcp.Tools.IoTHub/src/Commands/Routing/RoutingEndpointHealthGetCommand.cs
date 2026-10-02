@@ -4,7 +4,6 @@
 using System.Net;
 using Azure;
 using Azure.Mcp.Core.Services.Azure.Subscription;
-using Azure.Mcp.Tools.IoTHub.Models;
 using Azure.Mcp.Tools.IoTHub.Options.Routing;
 using Azure.Mcp.Tools.IoTHub.Services;
 using Microsoft.Extensions.Logging;
@@ -32,12 +31,12 @@ namespace Azure.Mcp.Tools.IoTHub.Commands.Routing;
     LocalRequired = false)]
 public sealed class RoutingEndpointHealthGetCommand(
     ILogger<RoutingEndpointHealthGetCommand> logger,
-    IIoTHubService service,
+    IIoTHubRoutingService service,
     ISubscriptionResolver subscriptionResolver)
-    : BaseIoTHubCommand<RoutingEndpointHealthGetOptions, RoutingEndpointHealthGetCommand.RoutingEndpointHealthGetCommandResult>(subscriptionResolver)
+    : BaseIoTHubCommand<RoutingEndpointHealthGetOptions, RoutingEndpointHealthGetResult>(subscriptionResolver)
 {
     private readonly ILogger<RoutingEndpointHealthGetCommand> _logger = logger;
-    private readonly IIoTHubService _service = service;
+    private readonly IIoTHubRoutingService _service = service;
 
     public override void ValidateOptions(RoutingEndpointHealthGetOptions options, ValidationResult validationResult)
     {
@@ -62,8 +61,8 @@ public sealed class RoutingEndpointHealthGetCommand(
                 ?? [];
 
             context.Response.Results = ResponseResult.Create(
-                new RoutingEndpointHealthGetCommandResult(endpoints),
-                IoTHubJsonContext.Default.RoutingEndpointHealthGetCommandResult);
+                new RoutingEndpointHealthGetResult(endpoints),
+                IoTHubJsonContext.Default.RoutingEndpointHealthGetResult);
         }
         catch (Exception ex)
         {
@@ -89,7 +88,4 @@ public sealed class RoutingEndpointHealthGetCommand(
             "IoT Hub routing endpoint health could not be read.",
         _ => base.GetErrorMessage(ex)
     };
-
-    public record RoutingEndpointHealthGetCommandResult(
-        List<RoutingEndpointHealthSnapshot> Value);
 }

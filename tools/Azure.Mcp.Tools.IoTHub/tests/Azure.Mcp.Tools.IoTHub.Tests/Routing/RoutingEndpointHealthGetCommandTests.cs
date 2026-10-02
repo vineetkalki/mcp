@@ -14,7 +14,7 @@ using Xunit;
 namespace Azure.Mcp.Tools.IoTHub.Tests.Routing;
 
 public class RoutingEndpointHealthGetCommandTests
-    : SubscriptionCommandUnitTestsBase<RoutingEndpointHealthGetCommand, IIoTHubService>
+    : SubscriptionCommandUnitTestsBase<RoutingEndpointHealthGetCommand, IIoTHubRoutingService>
 {
     [Fact]
     public void Constructor_InitializesCommandCorrectly()
@@ -79,7 +79,7 @@ public class RoutingEndpointHealthGetCommandTests
 
         var result = ValidateAndDeserializeResponse(
             response,
-            IoTHubJsonContext.Default.RoutingEndpointHealthGetCommandResult);
+            IoTHubJsonContext.Default.RoutingEndpointHealthGetResult);
         var endpoint = Assert.Single(result.Value);
         Assert.Equal("endpoint-id", endpoint.EndpointId);
         Assert.Equal("endpoint1", endpoint.EndpointName);
@@ -131,6 +131,21 @@ public class RoutingEndpointHealthGetCommandTests
 
         Assert.Equal(HttpStatusCode.BadRequest, response.Status);
         Assert.Contains("--hub-name must be 3-50 characters long", response.Message);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ReportsOperationTimeout()
+    {
+        Service.GetRoutingEndpointHealth(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new TimeoutException("Routing health operation timed out."));
+
+        var response = await ExecuteCommandAsync(
+            "--subscription sub123 --resource-group rg1 --hub-name hub1");
+
+        Assert.Equal(HttpStatusCode.RequestTimeout, response.Status);
+        Assert.Contains("timed out", response.Message);
     }
 
     [Fact]

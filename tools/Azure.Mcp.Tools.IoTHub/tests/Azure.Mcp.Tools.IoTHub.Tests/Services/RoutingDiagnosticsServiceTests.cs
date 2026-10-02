@@ -68,7 +68,7 @@ public class RoutingDiagnosticsServiceTests()
             var name = GetQuery(request, "metricnames");
             var selected = hubMetric ? "RoutingDeliveries" : "Transactions";
             return Metrics(Metric(name, name == selected
-                ? Series(IoTHubService.MetricSeriesLimit, hubMetric, distinctDimensions: false)
+                ? Series(IoTHubRoutingService.MetricSeriesLimit, hubMetric, distinctDimensions: false)
                 : ""));
         });
 
@@ -279,6 +279,52 @@ public class RoutingDiagnosticsServiceTests()
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task RoutingOperations_PropagateCancellationDuringHubLookup(
+        bool health, bool credentialStage)
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        using var handler = CreateHandler((_, _) => Metrics());
+        var azureService = Substitute.For<IAzureService>();
+        var service = CreateService(handler, azureService);
+        if (credentialStage)
+        {
+            azureService.GetTokenCredentialAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
+                .Returns(_ =>
+                {
+                    cancellation.Cancel();
+                    return Task.FromCanceled<TokenCredential>(cancellation.Token);
+                });
+        }
+        else
+        {
+            azureService.GetSubscription(Subscription, null, Arg.Any<CancellationToken>())
+                .Returns(_ =>
+                {
+                    cancellation.Cancel();
+                    return Task.FromCanceled<SubscriptionResource>(cancellation.Token);
+                });
+        }
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            if (health)
+            {
+                await service.GetRoutingEndpointHealth(
+                    "hub1", "rg1", Subscription, cancellationToken: cancellation.Token);
+            }
+            else
+            {
+                await DiagnoseAsync(service, cancellation.Token);
+            }
+        });
+        Assert.Empty(handler.RequestUris);
+    }
+
+    [Theory]
     [InlineData("RoutingDeliveries")]
     [InlineData("RoutingDeliveryLatency")]
     [InlineData("targetMetrics")]
@@ -309,6 +355,60 @@ public class RoutingDiagnosticsServiceTests()
             DiagnoseAsync(CreateService(handler), cancellationToken: cancellation.Token));
 
         Assert.True(TargetMetricRequests(handler).Count() <= 1);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.OK, "exists")]
+    [InlineData(HttpStatusCode.NotFound, "notFound")]
+    [InlineData(HttpStatusCode.Forbidden, "indeterminate")]
+    public async Task Diagnostics_QueriesRoutedResourceWithArmAuthentication(
+        HttpStatusCode statusCode, string expected)
+    {
+        var requests = 0;
+        using var handler = CreateHandler(
+            (request, _) => Metrics(Metric(GetQuery(request, "metricnames"))),
+            existenceResponse: (request, _) =>
+            {
+                requests++;
+                Assert.Equal(HttpMethod.Get, request.Method);
+                Assert.Equal(
+                    $"https://management.azure.com/subscriptions/{Subscription}/resourceGroups/rg1/providers/Microsoft.Storage/storageAccounts/shared/blobServices/default/containers/container1?api-version=2023-05-01",
+                    request.RequestUri!.ToString());
+                Assert.Equal("Bearer", request.Headers.Authorization?.Scheme);
+                Assert.Equal("fake-token", request.Headers.Authorization?.Parameter);
+                return JsonResponse("""{"error":{"code":"AuthorizationFailed"}}""", statusCode);
+            });
+
+        var endpoint = Assert.Single((await DiagnoseAsync(
+            CreateService(handler), TestContext.Current.CancellationToken)).Endpoints);
+
+        Assert.Equal(expected, endpoint.Target.ExistenceStatus);
+        Assert.Equal(1, requests);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task Diagnostics_RetriesTransientExistenceFailures(HttpStatusCode statusCode)
+    {
+        var attempts = 0;
+        using var handler = CreateHandler(
+            (request, _) => Metrics(Metric(GetQuery(request, "metricnames"))),
+            existenceResponse: (_, _) =>
+            {
+                var response = ++attempts == 1
+                    ? JsonResponse("""{"error":{"code":"ServerBusy"}}""", statusCode)
+                    : JsonResponse("{}");
+                response.Headers.Add("x-ms-retry-after-ms", "1");
+                return response;
+            });
+
+        var endpoint = Assert.Single((await DiagnoseAsync(
+            CreateService(handler), TestContext.Current.CancellationToken)).Endpoints);
+
+        Assert.Equal("exists", endpoint.Target.ExistenceStatus);
+        Assert.Null(endpoint.Target.Error);
+        Assert.Equal(2, attempts);
     }
 
     [Theory]
@@ -349,6 +449,32 @@ public class RoutingDiagnosticsServiceTests()
         {
             Assert.Null(first.Target.Error);
         }
+    }
+
+    [Fact]
+    public async Task Diagnostics_ReportsIndeterminateExistenceAfterDefaultRetriesAreExhausted()
+    {
+        var attempts = 0;
+        using var handler = CreateHandler(
+            (request, _) => Metrics(Metric(GetQuery(request, "metricnames"))),
+            existenceResponse: (_, _) =>
+            {
+                attempts++;
+                var response = JsonResponse(
+                    """{"error":{"code":"ServerBusy"}}""", HttpStatusCode.ServiceUnavailable);
+                response.Headers.Add("x-ms-retry-after-ms", "1");
+                return response;
+            });
+
+        var endpoint = Assert.Single((await DiagnoseAsync(
+            CreateService(handler), TestContext.Current.CancellationToken)).Endpoints);
+
+        Assert.Equal(new ArmClientOptions().Retry.MaxRetries + 1, attempts);
+        Assert.Equal("indeterminate", endpoint.Target.ExistenceStatus);
+        Assert.NotNull(endpoint.Target.Error);
+        Assert.Equal(503, endpoint.Target.Error.StatusCode);
+        Assert.Equal("ServerBusy", endpoint.Target.Error.Code);
+        Assert.Equal("queried", endpoint.TargetEmitted.QueryStatus);
     }
 
     [Fact]
@@ -400,7 +526,7 @@ public class RoutingDiagnosticsServiceTests()
     }
 
     private static Task<RoutingEndpointDiagnostics> DiagnoseAsync(
-        IoTHubService service,
+        IoTHubRoutingService service,
         CancellationToken cancellationToken,
         string? endpointName = null) =>
         service.GetRoutingEndpointDiagnostics(
@@ -466,9 +592,9 @@ public class RoutingDiagnosticsServiceTests()
             return existenceResponse?.Invoke(request, token) ?? JsonResponse("{}");
         });
 
-    private static IoTHubService CreateService(HttpMessageHandler handler)
+    private static IoTHubRoutingService CreateService(HttpMessageHandler handler, IAzureService? azureService = null)
     {
-        var azureService = Substitute.For<IAzureService>();
+        azureService ??= Substitute.For<IAzureService>();
         var configuration = Substitute.For<IAzureCloudConfiguration>();
         configuration.ArmEnvironment.Returns(ArmEnvironment.AzurePublicCloud);
         azureService.CloudConfiguration.Returns(configuration);
@@ -481,6 +607,8 @@ public class RoutingDiagnosticsServiceTests()
         var subscription = Substitute.For<SubscriptionResource>();
         subscription.Data.Returns(ResourceManagerModelFactory.SubscriptionData(subscriptionId: Subscription));
         azureService.GetSubscription(Subscription, null, Arg.Any<CancellationToken>()).Returns(subscription);
-        return new IoTHubService(azureService, Substitute.For<ILogger<IoTHubService>>());
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient(Arg.Any<string>()).Returns(_ => new HttpClient(handler, disposeHandler: false));
+        return new IoTHubRoutingService(azureService, factory, Substitute.For<ILogger<IoTHubRoutingService>>());
     }
 }

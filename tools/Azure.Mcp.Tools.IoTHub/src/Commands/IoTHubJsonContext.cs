@@ -43,7 +43,7 @@ namespace Azure.Mcp.Tools.IoTHub.Commands;
 [JsonSerializable(typeof(RoutingObservationWindow))]
 [JsonSerializable(typeof(RoutingTargetEmitted))]
 [JsonSerializable(typeof(RoutingTargetInfo))]
-[JsonSerializable(typeof(RoutingEndpointHealthGetCommand.RoutingEndpointHealthGetCommandResult))]
+[JsonSerializable(typeof(RoutingEndpointHealthGetResult))]
 [JsonSerializable(typeof(EndpointHealthDataListResult))]
 [JsonSerializable(typeof(EndpointHealthData))]
 [JsonSourceGenerationOptions(

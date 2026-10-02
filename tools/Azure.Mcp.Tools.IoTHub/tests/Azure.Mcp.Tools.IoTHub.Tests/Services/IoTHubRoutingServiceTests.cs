@@ -15,13 +15,13 @@ using Xunit;
 
 namespace Azure.Mcp.Tools.IoTHub.Tests.Services;
 
-public class IoTHubServiceTests
+public class IoTHubRoutingServiceTests()
 {
     [Fact]
     public async Task GetRoutingEndpointsHealthAsync_FollowsNextLink()
     {
         const string nextLink = "https://management.azure.com/next-health-page?api-version=2023-06-30";
-        var handler = new SequenceHttpMessageHandler(
+        using var handler = new SequenceHttpMessageHandler(
             new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(
@@ -107,10 +107,10 @@ public class IoTHubServiceTests
     public void BuildMonitorMetricsOptions_AppliesRequestedIntervalAndWindow()
     {
         var startTime = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
-        var window = new IoTHubService.ObservationWindow(startTime, startTime.AddHours(2));
+        var window = new ObservationWindow(startTime, startTime.AddHours(2));
         var interval = TimeSpan.FromMinutes(15);
 
-        var options = IoTHubService.BuildMonitorMetricsOptions(
+        var options = IoTHubRoutingService.BuildMonitorMetricsOptions(
             "Transactions",
             "Microsoft.Storage/storageAccounts",
             window,
@@ -124,17 +124,17 @@ public class IoTHubServiceTests
         Assert.Equal(interval, options.Interval);
         Assert.Equal("Total", options.Aggregation);
         Assert.Equal("ResponseType eq '*'", options.Filter);
-        Assert.Equal(IoTHubService.MetricSeriesLimit, options.Top);
+        Assert.Equal(IoTHubRoutingService.MetricSeriesLimit, options.Top);
     }
 
     [Fact]
     public void BuildMonitorMetricsOptions_OmitsFilterWhenNotProvided()
     {
         var startTime = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
-        var window = new IoTHubService.ObservationWindow(startTime, startTime.AddHours(6));
+        var window = new ObservationWindow(startTime, startTime.AddHours(6));
         var interval = TimeSpan.FromHours(6);
 
-        var options = IoTHubService.BuildMonitorMetricsOptions(
+        var options = IoTHubRoutingService.BuildMonitorMetricsOptions(
             "SuccessfulRequests,ServerErrors",
             "Microsoft.EventHub/namespaces",
             window,
@@ -161,7 +161,7 @@ public class IoTHubServiceTests
         var responseContent =
             $"{{\"error\":{{\"code\":\"{errorCode}\",\"message\":\"The resource does not exist.\"}}}}";
 
-        Assert.True(IoTHubService.IsResourceNotFoundResponse(statusCode, responseContent));
+        Assert.True(IoTHubRoutingService.IsResourceNotFoundResponse(statusCode, responseContent));
     }
 
     [Theory]
@@ -172,56 +172,126 @@ public class IoTHubServiceTests
         HttpStatusCode statusCode,
         string responseContent)
     {
-        Assert.False(IoTHubService.IsResourceNotFoundResponse(statusCode, responseContent));
+        Assert.False(IoTHubRoutingService.IsResourceNotFoundResponse(statusCode, responseContent));
     }
 
     [Theory]
-    [InlineData(HttpStatusCode.OK, true)]
-    [InlineData(HttpStatusCode.NotFound, false)]
-    [InlineData(HttpStatusCode.Forbidden, null)]
-    public async Task ResourceExistsAsync_ReturnsExpectedResult(
-        HttpStatusCode statusCode,
-        bool? expected)
+    [InlineData(HttpStatusCode.TooManyRequests)]
+    [InlineData(HttpStatusCode.ServiceUnavailable)]
+    public async Task GetRoutingEndpointsHealthAsync_RetriesTransientFailures(HttpStatusCode statusCode)
     {
-        var handler = new StubHttpMessageHandler(
-            statusCode,
-            """{"error":{"code":"AuthorizationFailed"}}""");
-        var service = CreateService(handler);
-        var resourceId = new ResourceIdentifier(
-            "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.ServiceBus/namespaces/ns1/queues/queue1");
+        var retryResponse = new HttpResponseMessage(statusCode) { Content = new StringContent("{}") };
+        retryResponse.Headers.Add("x-ms-retry-after-ms", "1");
+        using var handler = new SequenceHttpMessageHandler(
+            retryResponse,
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"value":[]}""") });
 
-        var result = await service.ResourceExistsAsync(
-            resourceId,
-            "2024-01-01",
-            "endpoint1",
-            tenant: null,
+        var result = await CreateService(handler).GetRoutingEndpointsHealthAsync(
+            new ResourceIdentifier("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Devices/IotHubs/hub1"),
+            null,
             TestContext.Current.CancellationToken);
 
-        Assert.Equal(expected, result);
-        Assert.Equal(HttpMethod.Get, handler.RequestMethod);
-        Assert.Equal(
-            $"https://management.azure.com{resourceId}?api-version=2024-01-01",
-            handler.RequestUri?.ToString());
-        Assert.Equal("Bearer", handler.AuthorizationScheme);
-        Assert.Equal("fake-token", handler.AuthorizationParameter);
+        Assert.Empty(result);
+        Assert.Equal(2, handler.RequestUris.Count);
     }
 
-    private static IoTHubService CreateService(HttpMessageHandler handler)
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.NotFound)]
+    public async Task GetRoutingEndpointsHealthAsync_DoesNotRetryPermanentFailures(HttpStatusCode statusCode)
+    {
+        using var handler = new SequenceHttpMessageHandler(
+            new HttpResponseMessage(statusCode) { Content = new StringContent("{}") });
+
+        var error = await Assert.ThrowsAsync<RequestFailedException>(() =>
+            CreateService(handler).GetRoutingEndpointsHealthAsync(
+                new ResourceIdentifier("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Devices/IotHubs/hub1"),
+                null,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal((int)statusCode, error.Status);
+        Assert.Single(handler.RequestUris);
+    }
+
+    [Fact]
+    public async Task ExecuteWithTimeoutAsync_ReportsExpiredBudget()
+    {
+        var error = await Assert.ThrowsAsync<TimeoutException>(() =>
+            IoTHubRoutingService.ExecuteWithTimeoutAsync(
+                async token =>
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                    return 0;
+                },
+                "routing test",
+                TestContext.Current.CancellationToken,
+                TimeSpan.FromMilliseconds(20)));
+
+        Assert.Contains("routing test", error.Message);
+    }
+
+    [Fact]
+    public async Task ExecuteWithTimeoutAsync_PreservesCallerCancellation()
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            IoTHubRoutingService.ExecuteWithTimeoutAsync(
+                async token =>
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                    return 0;
+                },
+                "routing test",
+                cancellation.Token));
+    }
+
+    [Fact]
+    public async Task GetRoutingEndpointsHealthAsync_UsesConfiguredCloudAndTenant()
     {
         var azureService = Substitute.For<IAzureService>();
-        var logger = Substitute.For<ILogger<IoTHubService>>();
+        var credential = Substitute.For<TokenCredential>();
+        using var handler = new SequenceHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"value":[]}""") });
+        var service = CreateService(handler, azureService, ArmEnvironment.AzureGovernment, credential);
+        azureService.ResolveTenantIdAsync("tenant-alias", Arg.Any<CancellationToken>()).Returns("tenant-id");
+
+        await service.GetRoutingEndpointsHealthAsync(
+            new ResourceIdentifier("/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Devices/IotHubs/hub1"),
+            "tenant-alias",
+            TestContext.Current.CancellationToken);
+
+        var request = Assert.Single(handler.RequestUris);
+        Assert.Equal(ArmEnvironment.AzureGovernment.Endpoint.Host, request!.Host);
+        await azureService.Received(1).GetTokenCredentialAsync("tenant-id", Arg.Any<CancellationToken>());
+        await credential.Received().GetTokenAsync(
+            Arg.Is<TokenRequestContext>(context =>
+                context.Scopes.Length == 1 && context.Scopes[0] == ArmEnvironment.AzureGovernment.DefaultScope),
+            Arg.Any<CancellationToken>());
+    }
+
+    private static IoTHubRoutingService CreateService(
+        HttpMessageHandler handler,
+        IAzureService? azureService = null,
+        ArmEnvironment? environment = null,
+        TokenCredential? credential = null)
+    {
+        azureService ??= Substitute.For<IAzureService>();
+        var logger = Substitute.For<ILogger<IoTHubRoutingService>>();
 
         var cloudConfiguration = Substitute.For<IAzureCloudConfiguration>();
-        cloudConfiguration.ArmEnvironment.Returns(ArmEnvironment.AzurePublicCloud);
+        cloudConfiguration.ArmEnvironment.Returns(environment ?? ArmEnvironment.AzurePublicCloud);
         azureService.CloudConfiguration.Returns(cloudConfiguration);
 
-        var credential = Substitute.For<TokenCredential>();
+        credential ??= Substitute.For<TokenCredential>();
         credential.GetTokenAsync(Arg.Any<TokenRequestContext>(), Arg.Any<CancellationToken>())
             .Returns(new AccessToken("fake-token", DateTimeOffset.UtcNow.AddHours(1)));
         azureService.GetTokenCredentialAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(credential));
-        azureService.GetClient(Arg.Any<string?>()).Returns(_ => new HttpClient(handler));
+        var factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient(Arg.Any<string>()).Returns(_ => new HttpClient(handler, disposeHandler: false));
 
-        return new IoTHubService(azureService, logger);
+        return new IoTHubRoutingService(azureService, factory, logger);
     }
 }

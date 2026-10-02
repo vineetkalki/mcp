@@ -36,12 +36,12 @@ namespace Azure.Mcp.Tools.IoTHub.Commands.Routing;
     LocalRequired = false)]
 public sealed class RoutingEndpointDiagnosticsCommand(
     ILogger<RoutingEndpointDiagnosticsCommand> logger,
-    IIoTHubService service,
+    IIoTHubRoutingService service,
     ISubscriptionResolver subscriptionResolver)
     : BaseIoTHubCommand<RoutingEndpointDiagnosticsOptions, RoutingEndpointDiagnostics>(subscriptionResolver)
 {
     private readonly ILogger<RoutingEndpointDiagnosticsCommand> _logger = logger;
-    private readonly IIoTHubService _service = service;
+    private readonly IIoTHubRoutingService _service = service;
 
     public override void ValidateOptions(
         RoutingEndpointDiagnosticsOptions options,
