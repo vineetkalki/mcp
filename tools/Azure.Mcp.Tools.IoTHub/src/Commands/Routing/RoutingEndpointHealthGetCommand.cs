@@ -23,6 +23,7 @@ namespace Azure.Mcp.Tools.IoTHub.Commands.Routing;
         window, querying metrics, or inferring health. This is not a whole-hub health assessment.
         Requires hub-name and resource-group.
         """,
+    OperationPlane = ToolOperationPlane.Control,
     Destructive = false,
     Idempotent = true,
     OpenWorld = false,

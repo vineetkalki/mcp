@@ -28,6 +28,7 @@ namespace Azure.Mcp.Tools.IoTHub.Commands.Routing;
         24 hours are used. --interval defaults to PT1H. At most 720 buckets are allowed.
         Requires hub-name and resource-group.
         """,
+    OperationPlane = ToolOperationPlane.Both,
     Destructive = false,
     Idempotent = true,
     OpenWorld = false,
