@@ -518,19 +518,6 @@ azmcp advisor recommendation summary --subscription <subscription> \
                                      [--resource-group <resource-group>] \
                                      [--tenant <tenant>]
 
-# Apply Advisor recommendation to create or modify IaaC files (like ARM, Terraform) for Azure resources
-# Supported --resource values:
-#   aad_domainservices, apimanagement_service, cognitiveservices_accounts,
-#   compute_virtualmachines, compute_virtualmachinescalesets,
-#   containerregistry_registries, containerservice_managedclusters,
-#   dbforpostgresql_flexibleservers, documentdb_databaseaccounts,
-#   keyvault_vaults, kubernetes_connectedclusters, kubernetesconfiguration_extensions,
-#   netapp_volumes, network_applicationgatewaywebapplicationfirewallpolicies,
-#   network_expressrouteports, network_frontdoorwebapplicationfirewallpolicies,
-#   sql_managedinstances, storage_storageaccounts, web_serverfarms, web_staticsites
-# ❌ Destructive | ✅ Idempotent | ❌ OpenWorld | ✅ ReadOnly | ❌ Secret | ❌ LocalRequired
-azmcp advisor recommendation apply --resource <resource>
-
 # List the global, subscription-independent Azure Advisor recommendation metadata catalog (also called recommendation types)
 # from Azure Resource Graph. Use it for metadata/catalog lookups, including service-retirement metadata by Service Health
 # tracking ID, even when no subscription or active recommendation instance is specified. Use recommendation list for actual
@@ -1066,6 +1053,7 @@ azmcp azurebackup vault create --subscription <subscription> \
                                --location <location> \
                                --vault-type <vault-type> \
                                [--sku <sku>] \
+                               [--enable-public-network-access <true|false>] \
                                [--storage-type <storage-type>]
 
 # Retrieves backup vault information. When --vault and --resource-group are specified, returns detailed information about a single vault including type, location, SKU, storage redundancy, and managed identity details when configured. Identity details include the identity type, principal ID, tenant ID, and attached user-assigned identities with their resource IDs, principal IDs, and client IDs. When omitted, lists all backup vaults (RSV and Backup vaults) in the subscription. Optionally filter by --vault-type ('rsv' or 'dpp') and/or --resource-group to narrow the listing results. Use --expand to include extended posture fields: 'security' (encryption key URI and cross-region restore state; DPP vaults additionally return encryption state — RSV vaults omit it because the vault GET API does not return an explicit state field), 'mua' (Multi-User Authorization / Resource Guard link), or 'all'.
@@ -4138,13 +4126,13 @@ azmcp datadog monitoredresources list --subscription <subscription> \
 
 ### Azure Quick Review CLI Operations
 
+These local-only commands are available when Azure Quick Review CLI (`azqr`) version 3.0.0 or later is installed and available on `PATH`.
+
 ```bash
 # Scan a subscription for recommendations
-# ❌ Destructive | ✅ Idempotent | ❌ OpenWorld | ✅ ReadOnly | ❌ Secret | ❌ LocalRequired
 azmcp extension azqr --subscription <subscription>
 
 # Scan a subscription and scope to a specific resource group
-# ❌ Destructive | ✅ Idempotent | ❌ OpenWorld | ✅ ReadOnly | ❌ Secret | ❌ LocalRequired
 azmcp extension azqr --subscription <subscription> \
                      --resource-group <resource-group-name>
 ```
