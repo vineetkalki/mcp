@@ -3,6 +3,7 @@
 
 using System.Xml;
 using Azure.Mcp.Tools.IoTHub.Routing;
+using Microsoft.Mcp.Core.Commands;
 using Xunit;
 
 namespace Azure.Mcp.Tools.IoTHub.Tests.Routing;
@@ -54,5 +55,18 @@ public class RoutingDiagnosticsWindowTests
         Assert.Contains("produce 1440 buckets", exception.Message);
         Assert.Contains("maximum is 720", exception.Message);
         Assert.Contains("PT5M or larger", exception.Message);
+    }
+
+    [Fact]
+    public void Validate_KeepsOptionValuesOutOfTelemetry()
+    {
+        var startTime = new DateTimeOffset(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
+        var validationResult = new ValidationResult();
+
+        RoutingDiagnosticsWindow.Validate(startTime, startTime.AddDays(2), "PT1M", validationResult);
+
+        var error = Assert.Single(validationResult.Errors);
+        Assert.Contains("produce 2880 buckets", error);
+        Assert.Equal(RoutingDiagnosticsWindow.InvalidWindowTelemetryMessage, validationResult.TelemetrySafeMessage);
     }
 }

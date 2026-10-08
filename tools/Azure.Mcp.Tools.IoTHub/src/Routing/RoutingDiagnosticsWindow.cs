@@ -25,6 +25,9 @@ internal static class RoutingDiagnosticsWindow
     public const string InvalidIntervalError =
         "--interval must be one of the Azure Monitor supported time grains: PT1M, PT5M, PT15M, PT30M, PT1H, PT6H, PT12H, or P1D.";
 
+    public const string InvalidWindowTelemetryMessage =
+        "Invalid IoT Hub routing diagnostics time window.";
+
     // Time grains Azure Monitor accepts for the metrics query; any other value is rejected by the service.
     private static readonly TimeSpan[] s_supportedIntervals =
     [
@@ -50,7 +53,7 @@ internal static class RoutingDiagnosticsWindow
         }
         catch (ArgumentException ex)
         {
-            validationResult.Errors.Add(ex.Message);
+            validationResult.AddError(ex.Message, InvalidWindowTelemetryMessage);
         }
     }
 
